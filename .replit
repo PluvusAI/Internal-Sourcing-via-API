@@ -1,0 +1,18 @@
+# Replit project file for pluvus-internal-sourcing (effective once this directory is its own
+# Replit project / repository — see README "Hosting on Replit").
+modules = ["nodejs-20"]
+run = "npm run dev"
+
+[nix]
+channel = "stable-25_05"
+
+[deployment]
+# A thin UI + API server: long sourcing jobs run in the sourcing backend's own workers, so the app
+# keeps no in-memory job state and can scale to zero.
+deploymentTarget = "autoscale"
+build = ["sh", "-c", "npm ci && npm run build"]
+run = ["npm", "run", "start"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80

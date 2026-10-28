@@ -1,0 +1,40 @@
+{
+  "name": "pluvus-internal-sourcing",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Internal creator sourcing app (PLU-505): named lists, selectable exclusions, sourcing, review and CSV export. A thin UI + backend-for-frontend over the Pluvus sourcing backend.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx watch --clear-screen=false --exclude \"./vite.config.ts*\" --exclude \"./src/**\" --exclude \"./dist/**\" server/index.ts",
+    "build": "vite build && tsc -p tsconfig.server.json && node scripts/check-bundle.mjs",
+    "start": "cross-env NODE_ENV=production node dist-server/server/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.test.json",
+    "test": "cross-env NODE_ENV=test tsx --test server/*.test.ts src/lib/*.test.ts",
+    "check:bundle": "node scripts/check-bundle.mjs"
+  },
+  "dependencies": {
+    "@clerk/backend": "^2.33.8",
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "@clerk/react": "^6.18.2",
+    "@fontsource-variable/fraunces": "^5.3.0",
+    "@fontsource-variable/inter": "^5.3.0",
+    "@tanstack/react-query": "^5.59.0",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "cross-env": "^10.1.0",
+    "lucide-react": "^1.26.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.15.5",
+    "typescript": "^5.5.2",
+    "vite": "^5.3.1"
+  }
+}
