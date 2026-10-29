@@ -82,8 +82,8 @@ maximum from the backend (`GET /api/meta` → backend `GET /api/v1/internal-sour
 `maxTargetCount`) and never holds a number of its own:
 
 - the first-search form and Find more both show and check that maximum; it is re-read when Find more
-  opens, when the window regains focus, and at most 30 seconds after it was last read, so raising it
-  from 25 to 100 (or lowering it for a test) reaches open pages without a reload;
+  opens, when the window regains focus, and every 30 seconds while the tab is visible, so raising it
+  from 25 to 100 (or lowering it for a test) reaches visible pages without a reload;
 - a count above it is flagged, never trimmed: a saved draft keeps what was entered;
 - a page that still holds an older, higher maximum is refused by the backend
   (`target_exceeds_limit`); nothing starts, the refusal is shown, and the page re-reads the limit.

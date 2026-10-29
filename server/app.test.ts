@@ -166,6 +166,11 @@ test("a missing list stays a 404; a missing source metadata route is a setup err
   const meta = await fetch(`${base}/api/meta`, { headers: authed() });
   assert.equal(meta.status, 502);
   assert.equal(((await meta.json()) as { error: { code: string } }).error.code, "source_misconfigured");
+  for (const path of ["/api/meta/", "/api/META"]) {
+    const alias = await fetch(`${base}${path}`, { headers: authed() });
+    assert.equal(alias.status, 502);
+    assert.equal(((await alias.json()) as { error: { code: string } }).error.code, "source_misconfigured");
+  }
 });
 
 test("source metadata and its changing limit control new operations without an app-side ceiling", async () => {

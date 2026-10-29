@@ -278,7 +278,7 @@ export function sourceSetupError(err: InternalSourcingApiError, path: string): {
   if (err.status === 400 && err.code === "https_required") {
     return { status: 503, code: "source_misconfigured", message: "The sourcing service must be reached over HTTPS. Check SOURCING_API_BASE_URL." };
   }
-  if ((path === "/meta" && err.status === 404 && (err.code === "not_found" || err.code === "unexpected_response")) || err.status === 405) {
+  if ((/^\/meta\/?$/i.test(path) && err.status === 404 && (err.code === "not_found" || err.code === "unexpected_response")) || err.status === 405) {
     return {
       status: 502,
       code: "source_misconfigured",
