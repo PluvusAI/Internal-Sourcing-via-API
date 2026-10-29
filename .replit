@@ -1,5 +1,4 @@
-# Replit project file for pluvus-internal-sourcing (effective once this directory is its own
-# Replit project / repository — see README "Hosting on Replit").
+# Replit project file for the internal sourcing app — see README "Hosting on Replit".
 modules = ["nodejs-20"]
 run = "npm run dev"
 

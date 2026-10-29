@@ -1,8 +1,8 @@
 /**
  * The typed client is a byte-for-byte copy of the sourcing backend's
  * server/src/internalSourcing/client.ts (whose types the backend checks against its own contract).
- * While both live in the same repository this fails the moment they differ. Once this app has its
- * own repository, refresh the copy from the backend when the contract changes.
+ * It fails the moment they differ, when a backend checkout is found: SOURCING_BACKEND_DIR, or
+ * pluvus-workflow-prototype next to this repository. Refresh the copy whenever the contract changes.
  *
  * Run:  npx tsx --test server/sourceClient.test.ts
  */
@@ -10,13 +10,15 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createInternalSourcingClient, internalSourcingClientFromEnv } from "./sourceClient.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const backendCopy = `${here}../../server/src/internalSourcing/client.ts`;
+const backendDir = process.env["SOURCING_BACKEND_DIR"] || join(here, "../../pluvus-workflow-prototype");
+const backendCopy = join(backendDir, "server/src/internalSourcing/client.ts");
 
-test("the client is identical to the backend's contract client", { skip: !existsSync(backendCopy) && "backend repository not alongside" }, () => {
+test("the client is identical to the backend's contract client", { skip: !existsSync(backendCopy) && `no backend checkout at ${backendDir} (set SOURCING_BACKEND_DIR)` }, () => {
   assert.equal(readFileSync(`${here}sourceClient.ts`, "utf8"), readFileSync(backendCopy, "utf8"));
 });
 

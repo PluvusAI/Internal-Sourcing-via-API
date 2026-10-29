@@ -1,4 +1,4 @@
-# pluvus-internal-sourcing
+# Internal Sourcing via API
 
 Internal creator sourcing app for Pluvus (PLU-505), used by Ricky and Calvin: import named creator
 lists, source new named lists that exclude explicitly selected lists, review results, and export
@@ -12,17 +12,16 @@ browser ──► this app's server (/api, sign-in, typed client) ──► sour
 
 | | Owns |
 |---|---|
-| **This app** (`internal-sourcing-app/`, proposed repo/Replit project `pluvus-internal-sourcing`) | Sign-in and allowlist, the screens, import/export dialogs, and server-to-server calls with the typed client (`server/sourceClient.ts`). No database, no provider keys, no sourcing logic, no background jobs. |
-| **Sourcing backend** (`PluvusAI/pluvus-workflow-prototype`, `server/`) | Durable lists and membership, import parsing and identity matching, exclusion snapshots, sourcing operations (existing worker + recovery), provider/cache/fit evaluation, CSV rendering. Contract: [`docs/internal-sourcing-api.md`](../docs/internal-sourcing-api.md). |
+| **This app** (this repository, `Pluvus/Internal-Sourcing-via-API`) | Sign-in and allowlist, the screens, import/export dialogs, and server-to-server calls with the typed client (`server/sourceClient.ts`). No database, no provider keys, no sourcing logic, no background jobs. |
+| **Sourcing backend** (`PluvusAI/pluvus-workflow-prototype`, `server/`) | Durable lists and membership, import parsing and identity matching, exclusion snapshots, sourcing operations (existing worker + recovery), provider/cache/fit evaluation, CSV rendering. Contract: [`docs/internal-sourcing-api.md`](https://github.com/PluvusAI/pluvus-workflow-prototype/blob/plu-505-internal-sourcing/docs/internal-sourcing-api.md) in that repository. |
 
 The app talks only to its own server; its server talks only to the sourcing backend's internal API
 with a dedicated key. The browser never sees that key, a provider key or a database URL
 (`npm run build` fails if a secret appears in the bundle).
 
-This directory currently lives in the sourcing backend's repository on branch
-`plu-505-internal-sourcing`, because a separate repository could not be created from the session that
-built it. It is self-contained (its own `package.json`, lockfile, `.replit`); see
-[Moving to its own repository](#moving-to-its-own-repository).
+The app was built as `internal-sourcing-app/` in the backend's repository (PLU-505, PLU-509) and
+moved here with its history. The backend side of PLU-505 is on that repository's
+`plu-505-internal-sourcing` branch until it merges; the links to it below point there.
 
 ## What it does
 
@@ -78,7 +77,7 @@ Redis URL, and **no sourcing limits**.
 How many new creators one search may ask for — and every spend, page, candidate, model and runtime
 ceiling — is configured **only on the sourcing backend** (PLU-509: the
 `SOURCING_INTERNAL_APP_MAX_*` settings, documented in
-[`docs/internal-sourcing-api.md`](../docs/internal-sourcing-api.md)). The app learns the current
+[`docs/internal-sourcing-api.md`](https://github.com/PluvusAI/pluvus-workflow-prototype/blob/plu-505-internal-sourcing/docs/internal-sourcing-api.md)). The app learns the current
 maximum from the backend (`GET /api/meta` → backend `GET /api/v1/internal-sourcing/meta` →
 `maxTargetCount`) and never holds a number of its own:
 
@@ -138,11 +137,11 @@ development sign-in. Both modes are refused when `NODE_ENV=production`. `MOCK_MA
 (or `100`) makes the sample backend report and enforce another per-search limit.
 
 To run against the **real** internal API, database layer and worker runner (with the backend's fake
-provider and evaluator, embedded Postgres, nothing paid), start the backend's local stack and point the
-app at it:
+provider and evaluator, embedded Postgres, nothing paid), start the backend's local stack from a checkout of
+`PluvusAI/pluvus-workflow-prototype` and point the app at it:
 
 ```bash
-cd ../server && LOCAL_STACK_KEY=<43+ throwaway chars> npx tsx scripts/internalSourcingLocalStack.ts
+cd <backend checkout>/server && LOCAL_STACK_KEY=<43+ throwaway chars> npx tsx scripts/internalSourcingLocalStack.ts
 ```
 
 ```bash
@@ -183,7 +182,7 @@ UI and `/api`). Sourcing jobs run on the sourcing backend's own workers, so an *
 deployment fits (no in-memory jobs; scaling to zero loses nothing). Lists stay in the sourcing
 backend's production database.
 
-1. Create the Replit project from this directory's own repository (below), or import it.
+1. Import this repository into Replit.
 2. Secrets: `SOURCING_API_BASE_URL`, `SOURCING_INTERNAL_APP_API_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`,
    `CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES` (the deployment's https URL),
    `INTERNAL_APP_ALLOWED_ORG_IDS` and/or `INTERNAL_APP_ALLOWED_USER_IDS`.
@@ -209,15 +208,14 @@ and USD 0.10 of model spend per request. Then:
 
 Nothing in this repository has made a live provider or model call.
 
-## Moving to its own repository
+## Keeping the client in step with the backend
+
+`server/sourceClient.ts` is a byte-for-byte copy of the backend's
+`server/src/internalSourcing/client.ts`. Whenever the backend's contract changes, copy that file
+over this one. `npm test` checks the two are identical when it can find the backend: a checkout of
+`pluvus-workflow-prototype` next to this one, or the one `SOURCING_BACKEND_DIR` names. Without
+either, that one check is skipped and says so.
 
 ```bash
-git subtree split --prefix internal-sourcing-app -b internal-sourcing-app-only
+SOURCING_BACKEND_DIR=../pluvus-workflow-prototype npm test
 ```
-
-```bash
-git push git@github.com:<org>/pluvus-internal-sourcing.git internal-sourcing-app-only:main
-```
-
-After the split, `server/sourceClient.test.ts` skips its drift check; refresh `server/sourceClient.ts`
-from the backend's `server/src/internalSourcing/client.ts` whenever the contract changes.
