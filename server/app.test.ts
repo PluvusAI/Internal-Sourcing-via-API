@@ -92,6 +92,9 @@ test("a complete live configuration has no problems; an allowlist is required", 
   const noAllow = loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_ORG_IDS: "" });
   assert.ok(noAllow.problems.some((p) => p.includes("INTERNAL_APP_ALLOWED_ORG_IDS or INTERNAL_APP_ALLOWED_USER_IDS")));
   assert.ok(loadConfig({ ...liveEnv, SOURCING_API_BASE_URL: "http://sourcing.example.test" }).problems.some((p) => p.includes("https")));
+  for (const url of ["https://sourcing.example.test/api/v1/internal-sourcing", "https://sourcing.example.test/?x=1", "https://user:pass@sourcing.example.test"]) {
+    assert.ok(loadConfig({ ...liveEnv, SOURCING_API_BASE_URL: url }).problems.some((p) => p.includes("SOURCING_API_BASE_URL")), url);
+  }
 });
 
 test("sign-in: no token 401, bad token 401, wrong organization 403, no active organization 403, removed member cannot write", async () => {
@@ -152,6 +155,62 @@ test("source errors reach the UI with their code; an unreachable source is a 502
   const d = await fetch(`${base2}/api/lists`, { headers: authed() });
   assert.equal(d.status, 502);
   assert.equal(((await d.json()) as { error: { code: string } }).error.code, "upstream_unavailable");
+});
+
+test("source metadata and its changing limit control new operations without an app-side ceiling", async () => {
+  let maxTargetCount = 100;
+  let savedTarget = 0;
+  let accepted = 0;
+  const fake = fakeSource((r) => {
+    if (r.url.endsWith("/meta")) return { status: 200, body: { workspace: "internal-sourcing", maxTargetCount, platforms: ["instagram"], exportFormats: { default: { headers: [], filled: [] }, sheets: { headers: [], filled: [] } } } };
+    if (r.method === "PATCH") {
+      savedTarget = (JSON.parse(r.body ?? "{}") as { targetCount: number }).targetCount;
+      return { status: 200, body: { targetCount: savedTarget } };
+    }
+    const body = JSON.parse(r.body ?? "{}") as { kind: string; targetCount?: number };
+    const requested = body.kind === "initial" ? savedTarget : body.targetCount ?? 0;
+    if (requested > maxTargetCount) return { status: 422, body: { error: { code: "target_exceeds_limit", message: `At most ${maxTargetCount} new creators can be requested at a time.`, maxTargetQualified: maxTargetCount } } };
+    accepted++;
+    return { status: 202, body: { operation: { targetCount: requested }, idempotentReplay: false } };
+  });
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const meta = await fetch(`${base}/api/meta`, { headers: authed() });
+  assert.equal(meta.status, 200);
+  assert.equal(((await meta.json()) as { maxTargetCount: number }).maxTargetCount, 100);
+  assert.equal((await fetch(`${base}/api/lists/abcdefgh1234`, { method: "PATCH", headers: authed(), body: JSON.stringify({ targetCount: 100 }) })).status, 200);
+  const initial = await fetch(`${base}/api/lists/abcdefgh1234/operations`, { method: "POST", headers: authed(), body: JSON.stringify({ kind: "initial", idempotencyKey: "initial-0123456789" }) });
+  assert.equal(initial.status, 202);
+  assert.equal(((await initial.json()) as { operation: { targetCount: number } }).operation.targetCount, 100);
+  maxTargetCount = 25;
+  const stale = await fetch(`${base}/api/lists/abcdefgh1234/operations`, { method: "POST", headers: authed(), body: JSON.stringify({ kind: "find_more", targetCount: 100, idempotencyKey: "more-0123456789" }) });
+  assert.equal(stale.status, 422);
+  assert.equal(((await stale.json()) as { error: { code: string; maxTargetQualified: number } }).error.code, "target_exceeds_limit");
+  assert.equal(accepted, 1, "the rejected request did not start an operation");
+  assert.equal(((await (await fetch(`${base}/api/meta`, { headers: authed() })).json()) as { maxTargetCount: number }).maxTargetCount, 25);
+  const more = await fetch(`${base}/api/lists/abcdefgh1234/operations`, { method: "POST", headers: authed(), body: JSON.stringify({ kind: "find_more", targetCount: 25, idempotencyKey: "more-1234567890" }) });
+  assert.equal(more.status, 202);
+  assert.equal(accepted, 2);
+  assert.equal(fake.calls.filter((c) => c.url.endsWith("/meta")).length, 2);
+  assert.ok(fake.calls.every((c) => c.headers["authorization"] === `Bearer ${KEY}`));
+});
+
+test("a mismatched internal secret is a setup error naming the variable, not a sign-in failure", async () => {
+  const wrong = "wrong-internal-app-key-".padEnd(43, "x");
+  const client = createInternalSourcingClient({
+    baseUrl: "https://sourcing.example.test",
+    apiKey: wrong,
+    fetchImpl: (async (_input, init) => {
+      assert.equal((init?.headers as Record<string, string>)["Authorization"], `Bearer ${wrong}`);
+      return new Response(JSON.stringify({ error: { code: "invalid_credentials", message: "Invalid internal app key." } }), { status: 401, headers: { "content-type": "application/json" } });
+    }) as typeof fetch,
+  });
+  const base = await serve(createApp(loadConfig({ ...liveEnv, SOURCING_INTERNAL_APP_API_KEY: wrong }), { source: client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const response = await fetch(`${base}/api/meta`, { headers: authed() });
+  assert.equal(response.status, 503, "a 401 here would read as the user's own sign-in failing");
+  const body = (await response.json()) as { error: { code: string; message: string } };
+  assert.equal(body.error.code, "source_auth_failed");
+  assert.match(body.error.message, /SOURCING_INTERNAL_APP_API_KEY/);
+  assert.ok(!body.error.message.includes(wrong), "never the key itself");
 });
 
 test("mock mode works end to end in development and is labelled", async () => {

@@ -119,8 +119,27 @@ not record their ids.)
 2. Set `SOURCING_INTERNAL_APP_API_KEY` in the backend's Secrets — reuse the existing internal key;
    generate one (`openssl rand -base64 32`) only if none exists — and the same value here. Keep
    `SOURCING_INTERNAL_APP_CLIENT_ID` at its current value (default `internal-sourcing`).
-3. Set the internal limits on the backend (PLU-509) and redeploy it. The existing worker and
-   scheduler run internal operations; nothing else to start, and nothing to change in this app.
+3. Once the backend's limit settings land, set the internal limits **on the backend** (PLU-509)
+   and redeploy it. Explicit values are bounded by the backend's hard maxima; unset ones inherit
+   its general sourcing settings. The proposed operating profile (backend settings, not app ones):
+
+   ```dotenv
+   SOURCING_INTERNAL_APP_MAX_TARGET_QUALIFIED=100
+   SOURCING_INTERNAL_APP_MAX_CANDIDATES_PER_REQUEST=1000
+   SOURCING_INTERNAL_APP_MAX_EVIDENCE_LOOKUPS_PER_REQUEST=200
+   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_REQUEST=10
+   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_DAY=50
+   SOURCING_INTERNAL_APP_MAX_LLM_USD_PER_REQUEST=0.50
+   SOURCING_INTERNAL_APP_MAX_PAGES_PER_REQUEST=40
+   SOURCING_INTERNAL_APP_MAX_PAGE_SIZE=25
+   SOURCING_INTERNAL_APP_MAX_RUNTIME_SECONDS=1200
+   SOURCING_INTERNAL_APP_MAX_QUEUE_WAIT_SECONDS=3600
+   SOURCING_INTERNAL_APP_MAX_ACTIVE_REQUESTS=2
+   ```
+
+   Start with the small envelope in [First live check](#first-live-check) instead. The existing
+   worker and scheduler run internal operations; nothing else to start, and nothing to change in
+   this app.
 
 ## Development
 

@@ -2,7 +2,7 @@
 // Internal sourcing API — typed server-side client (PLU-505)
 // ---------------------------------------------------------------------------
 // SELF-CONTAINED ON PURPOSE: no imports, standard `fetch` only. The internal sourcing app copies
-// this one file into its BACKEND (internal-sourcing-app/server/sourceClient.ts) and uses it as is.
+// this one file into its BACKEND (Pluvus/Internal-Sourcing-via-API, server/sourceClient.ts) and uses it as is.
 // It must never be bundled into browser code — it holds the internal app's service key.
 //
 //   const source = internalSourcingClientFromEnv(process.env); // SOURCING_API_BASE_URL + SOURCING_INTERNAL_APP_API_KEY
