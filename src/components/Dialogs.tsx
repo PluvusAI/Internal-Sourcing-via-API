@@ -1,10 +1,12 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { ExportFormat, ListSummary } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
 import { count } from "../lib/format";
 import { clearKey, pendingKey, browserKeyStore } from "../lib/idempotency";
+import { findMoreDefault, isLimitError, targetProblem } from "../lib/limits";
+import { useMeta, useRefreshMeta } from "../meta";
 import { navigate } from "../router";
 import { Modal, Notice, Spinner, errorText } from "./ui";
 
@@ -65,18 +67,32 @@ export function suggestNextName(name: string): string {
   return m ? `${m[1]}${Number(m[2]) + 1}` : `${name} (next batch)`;
 }
 
-export function FindMoreDialog({ listId, listName, maxTarget, onClose, onStarted }: { listId: string; listName: string; maxTarget: number; onClose: () => void; onStarted: () => void }) {
-  const [n, setN] = useState("10");
+/**
+ * Find more: a new search on the same list for up to the backend's CURRENT maximum. The limit is
+ * re-read when the dialog opens; a number above it is shown as a problem, never trimmed. If a page
+ * that loaded an older limit still sends too many, the backend refuses it (nothing starts), the
+ * refusal is shown and the limit is read again.
+ */
+export function FindMoreDialog({ listId, listName, onClose, onStarted }: { listId: string; listName: string; onClose: () => void; onStarted: () => void }) {
+  const meta = useMeta({ fresh: true });
+  const refreshMeta = useRefreshMeta();
+  const max = meta.data?.maxTargetCount ?? null;
+  const [n, setN] = useState<string | null>(null);
   const id = useId();
   const keys = useRef(new Map<string, string>());
-  const value = /^\d+$/.test(n) ? Number(n) : 0;
-  const valid = value >= 1 && value <= maxTarget;
+  const text = n ?? (max === null ? "" : String(findMoreDefault(max)));
+  const value = /^\d+$/.test(text) ? Number(text) : null;
+  const problem = max === null ? null : targetProblem(value, max);
   const start = useMutation({
-    mutationFn: () => api.startOperation(listId, { idempotencyKey: pendingKey(browserKeyStore(), listId, "find_more", keys.current), kind: "find_more", targetCount: value }),
+    mutationFn: () => api.startOperation(listId, { idempotencyKey: pendingKey(browserKeyStore(), listId, "find_more", keys.current), kind: "find_more", targetCount: value! }),
     onSuccess: () => {
       clearKey(browserKeyStore(), listId, "find_more", keys.current);
       onStarted();
       onClose();
+    },
+    onError: (err) => {
+      // Nothing started. Learn the current maximum; the number typed stays as it is.
+      if (isLimitError(err)) refreshMeta();
     },
   });
   return (
@@ -88,7 +104,7 @@ export function FindMoreDialog({ listId, listName, maxTarget, onClose, onStarted
           <button type="button" className="btn" onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={!valid || start.isPending} onClick={() => start.mutate()}>
+          <button type="button" className="btn btn-primary" disabled={max === null || problem !== null || start.isPending} onClick={() => start.mutate()}>
             {start.isPending ? <Spinner label="Starting" /> : null} Find more
           </button>
         </>
@@ -96,19 +112,28 @@ export function FindMoreDialog({ listId, listName, maxTarget, onClose, onStarted
     >
       <div className="field">
         <label htmlFor={id}>Additional new creators</label>
-        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={n} onChange={(e) => setN(e.target.value)} aria-invalid={!valid} />
-        <span className="hint">1 to {maxTarget}.</span>
+        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={text} onChange={(e) => setN(e.target.value)} aria-invalid={problem !== null} aria-describedby={`${id}-hint`} />
+        <span className="hint" id={`${id}-hint`}>
+          {meta.isLoading ? "Checking the current limit…" : max !== null ? `1 to ${max} per search (the sourcing service’s current limit).` : null}
+        </span>
+        {problem && text !== "" ? <span className="error">{problem}</span> : null}
       </div>
+      {meta.isError ? <Notice tone="danger">The current limit could not be read: {errorText(meta.error)}</Notice> : null}
       <Notice tone="info">
-        Uses this list’s saved criteria and selected exclusion lists (their current membership), and always skips every creator already saved on <strong>{listName}</strong>. New creators are added to this list.
+        Uses this list’s saved criteria and selected exclusion lists (their current membership), and always skips every creator already saved on <strong>{listName}</strong>. New creators are added to this list, however many it already holds.
       </Notice>
-      {start.isError ? <Notice tone="danger">{errorText(start.error)}</Notice> : null}
+      {start.isError ? (
+        <Notice tone="danger" {...(isLimitError(start.error) ? { title: "Nothing was started" } : {})}>
+          {errorText(start.error)}
+          {isLimitError(start.error) && max !== null ? ` The limit is now ${max}.` : ""}
+        </Notice>
+      ) : null}
     </Modal>
   );
 }
 
 export function ExportDialog({ listId, listName, total, selectedCount, onClose }: { listId: string; listName: string; total: number; selectedCount: number; onClose: () => void }) {
-  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
+  const meta = useMeta();
   const [format, setFormat] = useState<ExportFormat>("default");
   const [scope, setScope] = useState<"selected" | "all">(selectedCount > 0 ? "selected" : "all");
   const [done, setDone] = useState<{ filename: string; count: number } | null>(null);

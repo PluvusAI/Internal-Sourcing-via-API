@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setTokenGetter, type SessionConfig } from "./api";
 import { Notice, Spinner } from "./components/ui";
 import { ListPage } from "./pages/ListPage";
+import { useMeta } from "./meta";
 import { ListsHome } from "./pages/ListsHome";
 import { linkHandler, useLocation } from "./router";
 
@@ -66,8 +67,14 @@ function ClerkGate({ config }: { config: SessionConfig }) {
   return <Shell config={config} account={<><OrganizationSwitcher hidePersonal /><UserButton /></>} />;
 }
 
+/** Codes the app's server uses when its connection to the sourcing service is misconfigured. */
+const SOURCE_SETUP_CODES = new Set(["source_auth_failed", "source_not_configured", "source_misconfigured", "setup_required"]);
+
 function Shell({ config, account }: { config: SessionConfig; account: ReactNode }) {
   const { route } = useLocation();
+  // The same metadata read the forms use; a setup failure here explains every empty screen below.
+  const meta = useMeta();
+  const setupError = meta.error instanceof ApiError && SOURCE_SETUP_CODES.has(meta.error.code) ? meta.error : null;
   return (
     <div className="shell">
       <header className="topbar">
@@ -83,6 +90,11 @@ function Shell({ config, account }: { config: SessionConfig; account: ReactNode 
       {config.sourceMode === "mock" ? (
         <div className="mode-banner" role="status">
           Sample data — this app is running in development mock mode, not connected to the sourcing service. Nothing here is real.
+        </div>
+      ) : null}
+      {setupError ? (
+        <div className="mode-banner setup-banner" role="alert">
+          Not connected to the sourcing service: {setupError.message}
         </div>
       ) : null}
       <main className="main">{route.name === "list" ? <ListPage key={route.id} id={route.id} /> : <ListsHome />}</main>

@@ -224,9 +224,17 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
   api.post("/criteria/suggest", asyncRoute(async (req, res) => void res.json(await source().suggestCriteria(req.body))));
 
   api.use((_req, res) => res.status(404).json({ error: { code: "not_found", message: "No such endpoint." } }));
-  // The source's own error codes and messages reach the UI unchanged; anything else is generic.
+  // The source's own error codes and messages reach the UI unchanged — except the ones that mean
+  // THIS APP's connection to the source is misconfigured, which become an honest 503 setup error
+  // (a source 401 must never look like the signed-in user's own session failing). Anything else
+  // is generic.
   api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof InternalSourcingApiError) {
+      const setup = sourceSetupError(err);
+      if (setup) {
+        warnSetupOnce(setup.code);
+        return void res.status(setup.status).json({ error: { code: setup.code, message: setup.message } });
+      }
       const status = err.status === 0 ? 502 : err.status;
       if (err.retryAfterSeconds) res.setHeader("Retry-After", String(err.retryAfterSeconds));
       return void res.status(status).json({ error: { code: err.code, message: err.message, ...err.details } });
@@ -249,6 +257,42 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
     });
   }
   return app;
+}
+
+/**
+ * A source answer that means the app ↔ source connection itself is wrong, as the error the UI
+ * shows instead. Names variables, never values. Null for every ordinary answer (validation,
+ * not-found list, conflicts, limits), which pass through unchanged.
+ */
+export function sourceSetupError(err: InternalSourcingApiError): { status: number; code: string; message: string } | null {
+  if (err.status === 401 || err.status === 403) {
+    return {
+      status: 503,
+      code: "source_auth_failed",
+      message: "The sourcing service did not accept this app's key. SOURCING_INTERNAL_APP_API_KEY here must equal SOURCING_INTERNAL_APP_API_KEY on the sourcing backend (not the waitlist's SOURCING_SERVICE_API_KEY).",
+    };
+  }
+  if (err.status === 503 && err.code === "not_configured") {
+    return { status: 503, code: "source_not_configured", message: "The sourcing service has no internal app key configured. Set SOURCING_INTERNAL_APP_API_KEY on the sourcing backend and redeploy it." };
+  }
+  if (err.status === 400 && err.code === "https_required") {
+    return { status: 503, code: "source_misconfigured", message: "The sourcing service must be reached over HTTPS. Check SOURCING_API_BASE_URL." };
+  }
+  if ((err.status === 404 && (err.code === "not_found" || err.code === "unexpected_response")) || err.status === 405) {
+    return {
+      status: 502,
+      code: "source_misconfigured",
+      message: "SOURCING_API_BASE_URL does not point at a sourcing backend with the internal sourcing API. Check the origin, and that the backend with PLU-505 is deployed.",
+    };
+  }
+  return null;
+}
+
+const warned = new Set<string>();
+function warnSetupOnce(code: string): void {
+  if (warned.has(code)) return;
+  warned.add(code);
+  console.warn(`[internal-sourcing-app] the sourcing service connection is misconfigured (${code}); see README "Configuration".`);
 }
 
 /** The real sourcing backend client for a live configuration, or null when it is not configured. */

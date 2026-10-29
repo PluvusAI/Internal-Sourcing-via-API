@@ -13,6 +13,7 @@ export function CriteriaFormFields({
   onChange,
   problems,
   showProblems,
+  showTargetProblem,
   targetCount,
   onTargetCount,
   maxTarget,
@@ -21,12 +22,14 @@ export function CriteriaFormFields({
   onChange: (f: Form) => void;
   problems: FormProblems;
   showProblems: boolean;
+  /** Show the count's problem even before a first attempt (it exceeds the backend's limit). */
+  showTargetProblem?: boolean;
   targetCount: number | null;
   onTargetCount: (n: number | null) => void;
   maxTarget: number;
 }) {
   const uid = useId();
-  const err = (key: string) => (showProblems ? problems[key] : undefined);
+  const err = (key: string) => (showProblems || (key === "targetCount" && showTargetProblem) ? problems[key] : undefined);
   const set = <K extends keyof Form>(k: K, v: Form[K]) => onChange({ ...form, [k]: v });
   const togglePlatform = (p: SourcingPlatform): void => {
     const has = form.platforms.some((x) => x.platform === p);
@@ -150,7 +153,7 @@ export function CriteriaFormFields({
           aria-invalid={err("targetCount") ? true : undefined}
           onChange={(e) => onTargetCount(/^\d+$/.test(e.target.value) ? Number(e.target.value) : e.target.value === "" ? null : targetCount)}
         />,
-        `Up to ${maxTarget} per search. Fewer may qualify; the list will say why.`,
+        `Up to ${maxTarget} per search (the sourcing service’s current limit); Find more adds more later. Fewer may qualify; the list will say why.`,
       )}
     </div>
   );

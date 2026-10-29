@@ -9,7 +9,10 @@ import { createMockSource } from "./mockSource.js";
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), process.env["NODE_ENV"] === "production" ? "../.." : "..");
 const cfg = loadConfig();
-const source = cfg.sourceMode === "mock" ? createMockSource() : liveSource(cfg);
+// MOCK_MAX_TARGET_COUNT: mock mode only (development) — the per-search limit the sample backend
+// reports, to try the forms against a raised or lowered limit. Live mode reads the real backend's.
+const mockMax = Number(process.env["MOCK_MAX_TARGET_COUNT"]);
+const source = cfg.sourceMode === "mock" ? createMockSource(Number.isInteger(mockMax) && mockMax > 0 ? { maxTargetCount: mockMax } : {}) : liveSource(cfg);
 
 if (cfg.problems.length > 0) {
   // Names only. The app still starts so /health answers and the UI can show what is missing.

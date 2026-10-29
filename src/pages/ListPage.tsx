@@ -12,10 +12,12 @@ import { applyPending, applySuggestion, criteriaSummary, draftFromForm, formFrom
 import { count, isActive, pollMs, progressText, when } from "../lib/format";
 import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
+import { isLimitError } from "../lib/limits";
+import { useMeta, useRefreshMeta } from "../meta";
 import { linkHandler } from "../router";
 
 export function ListPage({ id }: { id: string }) {
-  const meta = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: Infinity });
+  const meta = useMeta();
   const list = useQuery({
     queryKey: ["list", id],
     queryFn: () => api.getList(id),
@@ -43,7 +45,7 @@ export function ListPage({ id }: { id: string }) {
   return (
     <>
       {back}
-      {d.kind === "sourced" && !d.criteriaLocked ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} meta={meta.data!} />}
+      {d.kind === "sourced" && !d.criteriaLocked ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} />}
     </>
   );
 }
@@ -130,7 +132,10 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   });
 
   // ── start
+  const refreshMeta = useRefreshMeta();
   const problems = formProblems(form, target, meta.maxTargetCount);
+  // Over the limit is shown at once (other problems wait for a first attempt).
+  const overLimit = target !== null && target > meta.maxTargetCount;
   const problemCount = Object.keys(problems).length + (name.trim() ? 0 : 1);
   const start = useMutation({
     mutationFn: () => api.startOperation(list.id, { idempotencyKey: pendingKey(browserKeyStore(), list.id, "initial", keys.current), kind: "initial", baseRevision: revision.current }),
@@ -141,6 +146,9 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
     },
     onError: (err) => {
       if (err instanceof ApiError && (err.code === "already_started" || err.code === "operation_active")) void qc.invalidateQueries({ queryKey: ["list", list.id] });
+      // The backend's limit is lower than the one this page loaded: nothing started. Re-read it;
+      // the saved count stays as entered and the form says what the limit is now.
+      if (isLimitError(err)) refreshMeta();
     },
   });
   const startIssues = start.error instanceof ApiError ? ((start.error.details["issues"] as Array<{ path: string; message: string }> | undefined) ?? []) : [];
@@ -206,7 +214,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
               ))}
             </div>
           </details>
-          <CriteriaFormFields form={form} onChange={setForm} problems={problems} showProblems={tried} targetCount={target} onTargetCount={setTarget} maxTarget={meta.maxTargetCount} />
+          <CriteriaFormFields form={form} onChange={setForm} problems={problems} showProblems={tried} showTargetProblem={overLimit} targetCount={target} onTargetCount={setTarget} maxTarget={meta.maxTargetCount} />
         </div>
 
         <div className="section">
@@ -272,7 +280,7 @@ function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => vo
 
 // ─────────────────────────────────────────────────────────────── workspace
 
-function ListWorkspace({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
+function ListWorkspace({ list }: { list: ListDetail }) {
   const qc = useQueryClient();
   const [dialog, setDialog] = useState<"export" | "more" | "derive" | null>(null);
   const [selected, setSelected] = useState({ n: 0, total: list.memberCount });
@@ -341,7 +349,7 @@ function ListWorkspace({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
       </div>
 
       {dialog === "export" ? <ExportDialog listId={list.id} listName={list.name} total={selected.total} selectedCount={selected.n} onClose={() => setDialog(null)} /> : null}
-      {dialog === "more" ? <FindMoreDialog listId={list.id} listName={list.name} maxTarget={meta.maxTargetCount} onClose={() => setDialog(null)} onStarted={refresh} /> : null}
+      {dialog === "more" ? <FindMoreDialog listId={list.id} listName={list.name} onClose={() => setDialog(null)} onStarted={refresh} /> : null}
       {dialog === "derive" ? <NewListDialog from={list} onClose={() => setDialog(null)} /> : null}
     </>
   );

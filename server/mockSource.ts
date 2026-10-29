@@ -58,7 +58,13 @@ const fail = (status: number, code: string, message: string, details: Record<str
   throw new InternalSourcingApiError(status, code, message, details);
 };
 
-export function createMockSource(): InternalSourcingClient {
+/**
+ * `maxTargetCount` stands in for the backend's per-search limit (SOURCING_INTERNAL_APP_MAX_TARGET_QUALIFIED
+ * there). The mock reports it from meta and refuses a larger search exactly as the backend does;
+ * `setMaxTargetCount` changes it at run time, the way a backend redeploy would.
+ */
+export function createMockSource(opts: { maxTargetCount?: number } = {}): InternalSourcingClient & { setMaxTargetCount(n: number): void } {
+  let maxTarget = opts.maxTargetCount ?? 25;
   const lists = new Map<string, MockList>();
   const members = new Map<string, MemberView[]>();
   const ops = new Map<string, MockOp>();
@@ -238,10 +244,13 @@ export function createMockSource(): InternalSourcingClient {
   };
 
   return {
+    setMaxTargetCount(n: number) {
+      maxTarget = n;
+    },
     async meta() {
       return {
         workspace: "mock-workspace",
-        maxTargetCount: 25,
+        maxTargetCount: maxTarget,
         platforms: [...PLATFORMS],
         exportFormats: {
           default: { headers: MOCK_DEFAULT_HEADERS, filled: MOCK_DEFAULT_HEADERS },
@@ -332,7 +341,8 @@ export function createMockSource(): InternalSourcingClient {
       if (prior && (prior.view.status === "queued" || prior.view.status === "running")) fail(409, "operation_active", "A search is already running for this list.");
       if (p.kind === "initial" && prior) fail(409, "already_started", "This list has already been sourced.");
       if (!l.criteria?.niche || !l.criteria.platforms?.length) fail(400, "invalid_criteria", "Some criteria are missing or not valid.", { issues: [{ path: "niche", message: "Required" }] });
-      if (targetCount < 1 || targetCount > 25) fail(422, "target_exceeds_limit", "At most 25 new creators can be requested at a time.", { maxTargetQualified: 25 });
+      if (targetCount < 1) fail(400, "invalid_criteria", "Say how many new creators to find.", { issues: [{ path: "targetCount", message: "Required" }] });
+      if (targetCount > maxTarget) fail(422, "target_exceeds_limit", `At most ${maxTarget} new creators can be requested at a time.`, { maxTargetQualified: maxTarget });
       const excluded = new Set<string>();
       for (const x of [...l.excludedListIds, l.id]) for (const m of membersOf(x)) excluded.add(keyOf(m));
       const view: OperationView = {

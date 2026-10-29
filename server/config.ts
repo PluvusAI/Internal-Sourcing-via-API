@@ -48,6 +48,27 @@ const ORG_ID = /^org_[A-Za-z0-9]+$/;
 const USER_ID = /^user_[A-Za-z0-9]+$/;
 const MIN_KEY_LENGTH = 43;
 
+/**
+ * SOURCING_API_BASE_URL is the backend's ORIGIN: https://host[:port], nothing after it. The client
+ * appends /api/v1/internal-sourcing itself, so a path here would otherwise be silently ignored.
+ * Plain http is accepted only for this machine (local development).
+ */
+export function baseUrlProblem(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return "SOURCING_API_BASE_URL is not a valid URL";
+  }
+  const local = url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if (url.protocol !== "https:" && !local) return "SOURCING_API_BASE_URL must be an https origin";
+  if (url.username || url.password) return "SOURCING_API_BASE_URL must not contain credentials";
+  if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash) {
+    return "SOURCING_API_BASE_URL must be the backend's origin only (https://host), without a path such as /api/v1";
+  }
+  return null;
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const production = env["NODE_ENV"] === "production";
   const problems: string[] = [];
@@ -78,7 +99,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     const baseUrl = (env["SOURCING_API_BASE_URL"] ?? "").trim();
     const apiKey = (env["SOURCING_INTERNAL_APP_API_KEY"] ?? "").trim();
     if (!baseUrl) problems.push("SOURCING_API_BASE_URL is not set");
-    else if (!/^https:\/\//.test(baseUrl) && !/^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/.test(baseUrl)) problems.push("SOURCING_API_BASE_URL must be an https origin");
+    else {
+      const problem = baseUrlProblem(baseUrl);
+      if (problem) problems.push(problem);
+    }
     if (!apiKey) problems.push("SOURCING_INTERNAL_APP_API_KEY is not set");
     else if (apiKey.length < MIN_KEY_LENGTH) problems.push(`SOURCING_INTERNAL_APP_API_KEY is shorter than ${MIN_KEY_LENGTH} characters`);
     if (baseUrl && apiKey && problems.length === 0) source = { baseUrl, apiKey };

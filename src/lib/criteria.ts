@@ -1,4 +1,5 @@
 import type { DraftCriteria, InternalSuggestion, SourcingPlatform } from "../../server/sourceClient";
+import { targetProblem } from "./limits";
 
 // ---------------------------------------------------------------------------
 // The criteria form: draft ⇄ form state, client-side hints, and suggestion merging
@@ -108,8 +109,8 @@ export function formProblems(f: CriteriaForm, targetCount: number | null, maxTar
   if (f.creatorLocations.length > 20) out["creatorLocations"] = "At most 20 locations.";
   if (f.profileLanguages.some((l) => !/^[a-z]{2,3}$/.test(l))) out["profileLanguages"] = "Use language codes such as en or es.";
   if ((f.brandProduct.trim() || f.brandDescription.trim()) && !f.brandName.trim()) out["brandName"] = "Name the brand when giving product context.";
-  if (targetCount === null || !Number.isInteger(targetCount) || targetCount < 1) out["targetCount"] = "Say how many new creators to find.";
-  else if (targetCount > maxTarget) out["targetCount"] = `At most ${maxTarget} at a time.`;
+  const target = targetProblem(targetCount, maxTarget);
+  if (target) out["targetCount"] = target;
   return out;
 }
 

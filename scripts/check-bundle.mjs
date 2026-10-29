@@ -9,7 +9,8 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const DIST = new URL("../dist/", import.meta.url).pathname;
+// The built UI (default), or another directory given as the first argument (used by its test).
+const DIST = process.argv[2] ?? new URL("../dist/", import.meta.url).pathname;
 const SECRET_VARS = ["SOURCING_INTERNAL_APP_API_KEY", "CLERK_SECRET_KEY", "CLERK_JWT_KEY", "DATABASE_URL", "INFLUENCERS_CLUB_API_KEY", "SOURCING_SERVICE_API_KEY", "OPERATOR_API_KEY"];
 const PATTERNS = [
   [/sk_(live|test)_[A-Za-z0-9]{10,}/, "a Clerk secret key"],

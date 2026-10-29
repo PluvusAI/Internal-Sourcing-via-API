@@ -55,21 +55,55 @@ built it. It is self-contained (its own `package.json`, lockfile, `.replit`); se
 
 ## Configuration
 
-Copy names from [`.env.example`](.env.example) (names and placeholders only).
+Copy names from [`.env.example`](.env.example) (names and placeholders only). For deployed use the
+modes stay at their defaults, `SOURCE_MODE=live` and `AUTH_MODE=clerk`; `mock` / `dev` are
+development-only and are refused when `NODE_ENV=production`.
 
-| Variable | Where | Notes |
+| Variable | Where | Value |
 |---|---|---|
-| `SOURCING_API_BASE_URL` | server secret | The sourcing backend's https origin. |
-| `SOURCING_INTERNAL_APP_API_KEY` | server secret, **new** | Same value as the backend's `SOURCING_INTERNAL_APP_API_KEY`. Not the waitlist key. |
-| `VITE_CLERK_PUBLISHABLE_KEY` | build time (public) | Clerk publishable key; rebuild after changing. |
-| `CLERK_SECRET_KEY` | server secret | Same Clerk application. |
-| `CLERK_AUTHORIZED_PARTIES` | server | This app's https origin(s). Required in production. |
-| `INTERNAL_APP_ALLOWED_ORG_IDS` | server | Clerk organization ids whose members may sign in (their active organization). |
-| `INTERNAL_APP_ALLOWED_USER_IDS` | server | Individual Clerk user ids allowed. At least one of the two allowlists is required. |
+| `SOURCING_API_BASE_URL` | server | The deployed workflow backend's **origin only**: `https://<host>`, no `/api/v1…` path (a path is reported as a setup error rather than silently ignored). |
+| `SOURCING_INTERNAL_APP_API_KEY` | server secret | **Exactly the same value** as `SOURCING_INTERNAL_APP_API_KEY` on the sourcing backend (the existing PLU-505 internal key). Never the waitlist's `SOURCING_SERVICE_API_KEY`. Never a `VITE_*` variable. |
+| `VITE_CLERK_PUBLISHABLE_KEY` | build time (public) | Publishable key of the chosen Clerk application. Read by Vite at **build** time: rebuild after changing it. |
+| `CLERK_SECRET_KEY` | server secret | Secret key of the **same** Clerk application. |
+| `CLERK_AUTHORIZED_PARTIES` | server | This app's own https origin(s), comma-separated (e.g. the Replit deployment URL). Required in production. |
+| `INTERNAL_APP_ALLOWED_USER_IDS` | server | Approved Clerk user ids (`user_…`), comma-separated. |
+| `INTERNAL_APP_ALLOWED_ORG_IDS` | server | Approved Clerk organization ids (`org_…`); members whose **active** organization is one of them may sign in. At least one of the two allowlists is required. |
 | `PORT`, `HOST` | platform | Defaults 5000 / 0.0.0.0. |
 
-Missing or invalid configuration never falls back to sample data: `/health` still answers, every API
-call returns `503 setup_required`, and the UI shows a setup screen naming the missing variables.
+Nothing else belongs here: no provider keys, no OpenRouter or Influencers Club key, no database or
+Redis URL, and **no sourcing limits**.
+
+### Limits live on the sourcing backend
+
+How many new creators one search may ask for — and every spend, page, candidate, model and runtime
+ceiling — is configured **only on the sourcing backend** (PLU-509: the
+`SOURCING_INTERNAL_APP_MAX_*` settings, documented in
+[`docs/internal-sourcing-api.md`](../docs/internal-sourcing-api.md)). The app learns the current
+maximum from the backend (`GET /api/meta` → backend `GET /api/v1/internal-sourcing/meta` →
+`maxTargetCount`) and never holds a number of its own:
+
+- the first-search form and Find more both show and check that maximum; it is re-read when Find more
+  opens, when the window regains focus, and at most 30 seconds after it was last read, so raising it
+  from 25 to 100 (or lowering it for a test) reaches open pages without a reload;
+- a count above it is flagged, never trimmed: a saved draft keeps what was entered;
+- a page that still holds an older, higher maximum is refused by the backend
+  (`target_exceeds_limit`); nothing starts, the refusal is shown, and the page re-reads the limit.
+  The backend is the final enforcement point either way;
+- one search asks for at most the maximum; a saved list grows beyond it only through explicit
+  **Find more**. A search that stops at a spend, model, runtime or candidate ceiling keeps its rows
+  and shows its real reason; the app never starts another search by itself. Reopening, refreshing,
+  polling and exporting never start sourcing.
+
+### When setup is wrong
+
+| Situation | What the app does |
+|---|---|
+| A required variable is missing or malformed (e.g. a base URL with a path) | Every API call answers `503 setup_required`; the UI shows a setup screen naming the variables (never their values). |
+| `SOURCING_INTERNAL_APP_API_KEY` here differs from the backend's | `503 source_auth_failed`; a banner says the key does not match. It is not shown as a sign-in problem. |
+| The backend has no internal key configured | `503 source_not_configured`. |
+| `SOURCING_API_BASE_URL` is not the backend (or the backend lacks the internal API) | `502 source_misconfigured`. |
+
+Sample data is never shown instead.
 
 **Sign-in.** Clerk, verified on the server for every API call, plus the allowlist above; organization
 membership is re-checked live with Clerk for every change. The Pluvus operator dashboard uses the same
@@ -83,10 +117,11 @@ not record their ids.)
 1. Merge branch `plu-505-internal-sourcing` and apply migration
    `20261109120000_plu505_internal_sourcing_lists` (development via the post-merge setup; production
    via Publish — check `npm run db:check-publish` first, as the backend README describes).
-2. Generate a key (`openssl rand -base64 32`) and set it as `SOURCING_INTERNAL_APP_API_KEY` in the
-   backend's Secrets (and here). Optionally `SOURCING_INTERNAL_APP_MAX_CREDITS_PER_REQUEST` /
-   `_PER_DAY` to cap the internal app's provider spend below the service ceilings.
-3. Redeploy. The existing worker and scheduler run internal operations; nothing else to start.
+2. Set `SOURCING_INTERNAL_APP_API_KEY` in the backend's Secrets — reuse the existing internal key;
+   generate one (`openssl rand -base64 32`) only if none exists — and the same value here. Keep
+   `SOURCING_INTERNAL_APP_CLIENT_ID` at its current value (default `internal-sourcing`).
+3. Set the internal limits on the backend (PLU-509) and redeploy it. The existing worker and
+   scheduler run internal operations; nothing else to start, and nothing to change in this app.
 
 ## Development
 
@@ -99,7 +134,8 @@ SOURCE_MODE=mock AUTH_MODE=dev npm run dev
 ```
 
 opens on http://localhost:5000 with in-memory **sample data** (labelled on every screen) and a local
-development sign-in. Both modes are refused when `NODE_ENV=production`.
+development sign-in. Both modes are refused when `NODE_ENV=production`. `MOCK_MAX_TARGET_COUNT=5`
+(or `100`) makes the sample backend report and enforce another per-search limit.
 
 To run against the **real** internal API, database layer and worker runner (with the backend's fake
 provider and evaluator, embedded Postgres, nothing paid), start the backend's local stack and point the
@@ -137,6 +173,9 @@ Chromium against a running app (development sign-in), e.g. the local stack above
 CHROMIUM_PATH=/path/to/chrome node scripts/e2e-journey.mjs http://127.0.0.1:5000 ./e2e-shots
 ```
 
+`scripts/e2e-limits.mjs` (same usage) checks that both forms follow the backend's current maximum,
+including a page that still holds an older, higher one.
+
 ## Hosting on Replit
 
 The app is one web server: `npm run build` then `npm run start` (one listener on `PORT`, serves the
@@ -156,10 +195,19 @@ See https://docs.replit.com/features/publishing/deployment-types.
 
 ### First live check
 
-Before real use: import the real creator CSV, set a hard spend ceiling on the backend
-(`SOURCING_INTERNAL_APP_MAX_CREDITS_PER_REQUEST` / `_PER_DAY`, values chosen by the product owner),
-and run one small batch (e.g. 2–3 creators). Nothing in this repository has made a live provider or
-model call.
+Before real use, following PLU-509: on the **backend**, set a small test envelope of internal
+limits and redeploy it before starting the search, so the operation records those limits. PLU-509
+suggests target 5, candidates 50, evidence lookups 20, 1 provider credit per request and per day,
+and USD 0.10 of model spend per request. Then:
+
+1. Check that the app's first-search form and Find more both say "Up to 5" / "1 to 5".
+2. Import the real creator CSV, and start one 5-creator search with a representative exclusion list.
+   A partial result is valid; do not restart a ceiling-limited search.
+3. Reopen, refresh and export the list: no new search may appear.
+4. Review real usage on the backend, then set the operating limits there and redeploy the backend.
+   The app picks up the new maximum by itself.
+
+Nothing in this repository has made a live provider or model call.
 
 ## Moving to its own repository
 

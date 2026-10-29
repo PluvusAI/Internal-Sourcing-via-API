@@ -84,6 +84,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-mark { width: 26px; height: 26px; border-radius: 7px; background: var(--accent); color: var(--onAccent); display: grid; place-items: center; font-family: "Fraunces Variable", Georgia, serif; font-weight: 800; }
 .topbar-spacer { flex: 1; }
 .mode-banner { padding: 8px 24px; background: var(--warningWash); color: var(--warning); font-weight: 600; border-bottom: 1px solid var(--hairline); }
+.setup-banner { background: var(--dangerWash); color: var(--danger); }
 .main { width: 100%; max-width: 1280px; margin: 0 auto; padding: 24px; flex: 1; }
 .page-head { display: flex; gap: 16px; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; flex-wrap: wrap; }
 .page-head .context { color: var(--textMuted); margin-top: 4px; }
