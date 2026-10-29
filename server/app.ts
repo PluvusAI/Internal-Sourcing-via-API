@@ -228,9 +228,9 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
   // THIS APP's connection to the source is misconfigured, which become an honest 503 setup error
   // (a source 401 must never look like the signed-in user's own session failing). Anything else
   // is generic.
-  api.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
+  api.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof InternalSourcingApiError) {
-      const setup = sourceSetupError(err);
+      const setup = sourceSetupError(err, req.path);
       if (setup) {
         warnSetupOnce(setup.code);
         return void res.status(setup.status).json({ error: { code: setup.code, message: setup.message } });
@@ -264,7 +264,7 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
  * shows instead. Names variables, never values. Null for every ordinary answer (validation,
  * not-found list, conflicts, limits), which pass through unchanged.
  */
-export function sourceSetupError(err: InternalSourcingApiError): { status: number; code: string; message: string } | null {
+export function sourceSetupError(err: InternalSourcingApiError, path: string): { status: number; code: string; message: string } | null {
   if (err.status === 401 || err.status === 403) {
     return {
       status: 503,
@@ -278,7 +278,7 @@ export function sourceSetupError(err: InternalSourcingApiError): { status: numbe
   if (err.status === 400 && err.code === "https_required") {
     return { status: 503, code: "source_misconfigured", message: "The sourcing service must be reached over HTTPS. Check SOURCING_API_BASE_URL." };
   }
-  if ((err.status === 404 && (err.code === "not_found" || err.code === "unexpected_response")) || err.status === 405) {
+  if ((/^\/meta\/?$/i.test(path) && err.status === 404 && (err.code === "not_found" || err.code === "unexpected_response")) || err.status === 405) {
     return {
       status: 502,
       code: "source_misconfigured",

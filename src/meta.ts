@@ -11,7 +11,7 @@ import { META_STALE_MS } from "./lib/limits";
 export const META_KEY = ["meta"] as const;
 
 export function useMeta(opts: { fresh?: boolean } = {}) {
-  return useQuery({ queryKey: META_KEY, queryFn: api.meta, staleTime: META_STALE_MS, refetchOnWindowFocus: true, ...(opts.fresh ? { refetchOnMount: "always" as const } : {}) });
+  return useQuery({ queryKey: META_KEY, queryFn: api.meta, staleTime: META_STALE_MS, refetchInterval: META_STALE_MS, refetchOnWindowFocus: true, ...(opts.fresh ? { refetchOnMount: "always" as const } : {}) });
 }
 
 /** Re-read the metadata now, e.g. after the backend refused a count above its current maximum. */

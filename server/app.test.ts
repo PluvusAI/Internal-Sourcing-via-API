@@ -157,6 +157,22 @@ test("source errors reach the UI with their code; an unreachable source is a 502
   assert.equal(((await d.json()) as { error: { code: string } }).error.code, "upstream_unavailable");
 });
 
+test("a missing list stays a 404; a missing source metadata route is a setup error", async () => {
+  const fake = fakeSource((r) => ({ status: 404, body: { error: { code: "not_found", message: r.url.endsWith("/meta") ? "No metadata route." : "No such list." } } }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const list = await fetch(`${base}/api/lists/abcdefgh1234`, { headers: authed() });
+  assert.equal(list.status, 404);
+  assert.deepEqual(await list.json(), { error: { code: "not_found", message: "No such list." } });
+  const meta = await fetch(`${base}/api/meta`, { headers: authed() });
+  assert.equal(meta.status, 502);
+  assert.equal(((await meta.json()) as { error: { code: string } }).error.code, "source_misconfigured");
+  for (const path of ["/api/meta/", "/api/META"]) {
+    const alias = await fetch(`${base}${path}`, { headers: authed() });
+    assert.equal(alias.status, 502);
+    assert.equal(((await alias.json()) as { error: { code: string } }).error.code, "source_misconfigured");
+  }
+});
+
 test("source metadata and its changing limit control new operations without an app-side ceiling", async () => {
   let maxTargetCount = 100;
   let savedTarget = 0;
