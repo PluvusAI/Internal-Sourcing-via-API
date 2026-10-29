@@ -12,7 +12,7 @@ browser ──► this app's server (/api, sign-in, typed client) ──► sour
 
 | | Owns |
 |---|---|
-| **This app** (this repository, `Pluvus/Internal-Sourcing-via-API`) | Sign-in and allowlist, the screens, import/export dialogs, and server-to-server calls with the typed client (`server/sourceClient.ts`). No database, no provider keys, no sourcing logic, no background jobs. |
+| **This app** (this repository, `PluvusAI/Internal-Sourcing-via-API`) | Sign-in and allowlist, the screens, import/export dialogs, and server-to-server calls with the typed client (`server/sourceClient.ts`). No database, no provider keys, no sourcing logic, no background jobs. |
 | **Sourcing backend** (`PluvusAI/pluvus-workflow-prototype`, `server/`) | Durable lists and membership, import parsing and identity matching, exclusion snapshots, sourcing operations (existing worker + recovery), provider/cache/fit evaluation, CSV rendering. Contract: [`docs/internal-sourcing-api.md`](https://github.com/PluvusAI/pluvus-workflow-prototype/blob/plu-505-internal-sourcing/docs/internal-sourcing-api.md) in that repository. |
 
 The app talks only to its own server; its server talks only to the sourcing backend's internal API
