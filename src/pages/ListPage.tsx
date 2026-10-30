@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Copy, Download, Pencil, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, Copy, Download, Pencil, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
 import { CriteriaFormFields } from "../components/CriteriaForm";
 import { ExportDialog, FindMoreDialog, NewListDialog } from "../components/Dialogs";
 import { ExclusionPicker } from "../components/ExclusionPicker";
-import { MembersTable } from "../components/MembersTable";
+import { CreatorManagement } from "../components/CreatorManagement";
+import { RemoveListAction } from "../components/CreatorDialogs";
 import { Modal, Notice, Spinner, StatusBadge, errorText } from "../components/ui";
 import { applyPending, applySuggestion, criteriaSummary, draftFromForm, formFromDraft, formProblems, type CriteriaForm, type PendingSuggestion } from "../lib/criteria";
 import { count, isActive, pollMs, progressText, when } from "../lib/format";
@@ -14,7 +15,7 @@ import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
-import { linkHandler, parseRoute, registerNavigationBlocker, type NavigationAttempt } from "../router";
+import { linkHandler, navigate, parseRoute, registerNavigationBlocker, type NavigationAttempt } from "../router";
 
 export function ListPage({ id }: { id: string }) {
   const meta = useMeta();
@@ -45,7 +46,7 @@ export function ListPage({ id }: { id: string }) {
   return (
     <>
       {back}
-      {d.kind === "sourced" && !d.criteriaLocked ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} />}
+      {d.kind === "sourced" && !d.criteriaLocked && !d.archivedAt ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} />}
     </>
   );
 }
@@ -157,6 +158,9 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   const [brief, setBrief] = useState("");
   const [filled, setFilled] = useState<string[]>([]);
   const [pending, setPending] = useState<PendingSuggestion[]>([]);
+  const assistant = useQuery({ queryKey: ["suggestion-status"], queryFn: api.suggestionStatus, staleTime: 30_000 });
+  const currentForm = useRef(form);
+  currentForm.current = form;
   const suggest = useMutation({
     mutationFn: () =>
       api.suggest({
@@ -166,7 +170,8 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
         ...(form.brandProduct.trim() ? { product: form.brandProduct.trim() } : {}),
       }),
     onSuccess: (r) => {
-      const merged = applySuggestion(form, r.suggestion);
+      if (!r.ok) return;
+      const merged = applySuggestion(currentForm.current, r.suggestion);
       setForm(merged.form);
       setFilled(merged.filled);
       setPending(merged.pending);
@@ -195,6 +200,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   });
   const startIssues = start.error instanceof ApiError ? ((start.error.details["issues"] as Array<{ path: string; message: string }> | undefined) ?? []) : [];
   const canStart = save === "saved" && problemCount === 0 && !start.isPending;
+  const archiveDraft = useMutation({ mutationFn: () => api.archiveList(list.id, true), onSuccess: (d) => { qc.setQueryData(["list", list.id], d); void qc.invalidateQueries({ queryKey: ["lists"] }); } });
 
   return (
     <>
@@ -205,8 +211,9 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
           <input id={`${uid}-name`} className="input" style={{ fontSize: 18, fontWeight: 700 }} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} aria-invalid={!name.trim()} />
           {!name.trim() ? <span className="error">A list name is required.</span> : <span className="hint">Draft · new sourcing list</span>}
         </div>
-        <SaveIndicator state={save} onRetry={() => void flush()} />
+        <div className="actions"><SaveIndicator state={save} onRetry={() => void flush()} /><button type="button" className="btn btn-sm" disabled={save !== "saved" || archiveDraft.isPending || start.isPending} onClick={() => archiveDraft.mutate()}>Archive draft</button><RemoveListAction list={list} onRemoved={() => { savedKey.current = latestKey.current; inFlight.current = false; navigate("/"); }} /></div>
       </div>
+      {archiveDraft.isError ? <Notice tone="danger">{errorText(archiveDraft.error)}</Notice> : null}
       {save === "conflict" ? (
         <Notice tone="warning" title="This draft changed somewhere else">
           Your latest edits were not saved. <button type="button" className="link-btn" onClick={() => window.location.reload()}>Reload the list</button> to see the saved version.
@@ -219,10 +226,8 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
             <span className="step-index" aria-hidden>01</span>
             <div><h2>Define your ideal creators</h2><p className="muted small">Set the search and fit criteria for this batch.</p></div>
           </div>
-          <details className="platform-block">
-            <summary className="inline" style={{ cursor: "pointer", fontWeight: 600 }}>
-              <Sparkles size={14} aria-hidden /> Suggest criteria (optional)
-            </summary>
+          <section className="assistant-card" aria-label="AI criteria assistant">
+            <div className="inline" style={{ fontWeight: 600 }}><Sparkles size={16} aria-hidden />Turn your brief into criteria <span className="badge">Optional</span></div>
             <div className="stack" style={{ marginTop: 8 }}>
               <div className="field">
                 <label htmlFor={`${uid}-brief`}>Short brief</label>
@@ -230,11 +235,13 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
                 <span className="hint">Suggestions only fill empty fields. Review everything before you search; nothing starts by itself.</span>
               </div>
               <div className="actions">
-                <button type="button" className="btn btn-sm" disabled={brief.trim().length < 10 || form.platforms.length === 0 || suggest.isPending} onClick={() => suggest.mutate()}>
-                  {suggest.isPending ? <Spinner label="Suggesting" /> : <Sparkles size={14} aria-hidden />} Suggest
+                <button type="button" className="btn btn-sm" disabled={brief.trim().length < 10 || form.platforms.length === 0 || suggest.isPending || assistant.data?.available === false} onClick={() => suggest.mutate()}>
+                  {suggest.isPending ? <Spinner label="Suggesting" /> : <Sparkles size={14} aria-hidden />} {suggest.isPending ? "Suggesting…" : "Suggest criteria"}
                 </button>
                 {form.platforms.length === 0 ? <span className="muted small">Choose platforms first.</span> : null}
               </div>
+              {assistant.data?.message ? <Notice tone="info">{assistant.data.message}</Notice> : null}
+              {assistant.isError ? <Notice tone="warning">Could not check the assistant. You can retry Suggest criteria or enter the fields below.</Notice> : null}
               {suggest.isError ? <Notice tone="danger">{errorText(suggest.error)}</Notice> : null}
               {suggest.data && !suggest.data.ok ? <Notice tone="warning">{suggest.data.message}</Notice> : null}
               {filled.length > 0 ? <Notice tone="success">Filled: {filled.join(", ")}. Review them below.</Notice> : null}
@@ -257,7 +264,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
                 </div>
               ))}
             </div>
-          </details>
+          </section>
           <CriteriaFormFields form={form} onChange={setForm} problems={problems} showProblems={tried} showTargetProblem={overLimit} targetCount={target} onTargetCount={setTarget} maxTarget={meta.maxTargetCount} />
         </div>
 
@@ -311,6 +318,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
           </div>
         </div>
       </div>
+      <CreatorManagement list={list} />
       {leaveAttempt ? (
         <Modal
           title="Leave this draft?"
@@ -389,7 +397,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
           </div>
         </div>
         <div className="actions">
-          {list.kind === "sourced" ? (
+          {list.kind === "sourced" && list.criteriaLocked ? (
             <>
               <button type="button" className="btn" disabled={active || Boolean(list.archivedAt)} onClick={() => setDialog("more")} title={active ? "Wait for the current search to finish" : undefined}>
                 <Search size={16} aria-hidden /> Find more
@@ -403,24 +411,16 @@ function ListWorkspace({ list }: { list: ListDetail }) {
             <Download size={16} aria-hidden /> Export{selected.n > 0 ? ` selected (${count(selected.n)})` : ` all (${count(list.memberCount)})`}
           </button>
           <button type="button" className="btn btn-ghost" disabled={archive.isPending} onClick={() => archive.mutate(!list.archivedAt)}>
-            {list.archivedAt ? "Unarchive" : "Archive"}
+            {list.archivedAt ? "Restore to edit" : "Archive"}
           </button>
+          <RemoveListAction list={list} onRemoved={() => navigate("/")} />
         </div>
       </div>
 
       {list.kind === "sourced" ? <SourcedSummary list={list} latest={latest} /> : <ImportSummary list={list} />}
 
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="toolbar">
-          <h2>Creators</h2>
-          <span className="muted small">{active ? "Qualified creators appear here as soon as they are saved." : `${count(list.memberCount)} saved`}</span>
-          <span className="toolbar-spacer" />
-          <button type="button" className="btn btn-sm btn-ghost" onClick={refresh}>
-            <RefreshCw size={14} aria-hidden /> Refresh
-          </button>
-        </div>
-        <MembersTable listId={list.id} kind={list.kind} live={active} onSelectionCount={onSelectionCount} onExport={(n, total) => { setSelected({ n, total }); setDialog("export"); }} />
-      </div>
+      {list.archivedAt ? <Notice tone="info">This list is archived. Restore it to edit creators{list.criteriaLocked ? " or continue sourcing" : " and criteria"}. Existing creator data and exclusion links are kept.</Notice> : null}
+      <CreatorManagement list={list} onSelectionCount={onSelectionCount} onExport={(n, total) => { setSelected({ n, total }); setDialog("export"); }} />
 
       {dialog === "export" ? <ExportDialog listId={list.id} listName={list.name} total={selected.total} selectedCount={selected.n} onClose={() => setDialog(null)} /> : null}
       {dialog === "more" ? <FindMoreDialog listId={list.id} listName={list.name} onClose={() => setDialog(null)} onStarted={refresh} /> : null}
@@ -512,7 +512,7 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
             )}
           </dd>
         </dl>
-        <p className="muted small">Criteria and exclusions are fixed once a search has started. To change them, start a new list using these criteria.</p>
+        <p className="muted small">{list.criteriaLocked ? "Criteria and exclusions are fixed once a search has started. To change them, start a new list using these criteria." : "Restore this draft to edit its criteria and exclusions."}</p>
       </div>
       <div className="card card-pad section">
         <h2>Latest search</h2>

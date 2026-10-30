@@ -1,11 +1,12 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Users } from "lucide-react";
+import { Download, ExternalLink, Pencil, Trash2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { MemberView } from "../../server/sourceClient";
 import { api } from "../api";
 import { PLATFORM_LABELS } from "../lib/criteria";
 import { count, percent, when } from "../lib/format";
 import { Drawer, Notice, Pager, Spinner } from "./ui";
+import { CreatorDialog, RemoveCreatorsDialog } from "./CreatorDialogs";
 
 const PAGE = 50;
 const platformLabel = (p: string | null): string => (p && p in PLATFORM_LABELS ? PLATFORM_LABELS[p as keyof typeof PLATFORM_LABELS] : p === "twitch" ? "Twitch" : p ?? "—");
@@ -15,9 +16,10 @@ const platformLabel = (p: string | null): string => (p && p in PLATFORM_LABELS ?
  * by row id), so it survives paging, refresh, another session and Find more. "Select this page"
  * and "Select all N saved creators" are different actions with different labels.
  */
-export function MembersTable({ listId, kind, live, onSelectionCount, onExport }: { listId: string; kind: "imported" | "sourced"; live: boolean; onSelectionCount: (n: number, total: number) => void; onExport: (n: number, total: number) => void }) {
+export function MembersTable({ listId, kind, live, editable = true, listName = "this list", onSelectionCount, onExport, onMessage }: { listId: string; kind: "imported" | "sourced"; live: boolean; editable?: boolean; listName?: string; onSelectionCount: (n: number, total: number) => void; onExport: (n: number, total: number) => void; onMessage?: (message: string) => void }) {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<MemberView | null>(null);
+  const [dialog, setDialog] = useState<{ kind: "edit"; member: MemberView } | { kind: "remove"; member: MemberView | null } | null>(null);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["members", listId, page], queryFn: () => api.members(listId, { page, pageSize: PAGE }), placeholderData: keepPreviousData, refetchInterval: live ? 4000 : false });
   // A page change may temporarily carry the previous page's data. Never make those rows
@@ -26,6 +28,7 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
   useEffect(() => {
     if (data) onSelectionCount(data.selectedCount, data.total);
   }, [data, onSelectionCount]);
+  useEffect(() => { if (data && page > Math.max(1, Math.ceil(data.total / PAGE))) setPage(Math.max(1, Math.ceil(data.total / PAGE))); }, [data, page]);
 
   // A click shows at once (a local overlay); the saved selection is the truth once the source answers.
   const [overlay, setOverlay] = useState<{ all: boolean | null; ids: Map<string, boolean> }>({ all: null, ids: new Map() });
@@ -52,7 +55,7 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
   if (q.isLoading || q.isPlaceholderData) return <div className="empty"><Spinner label="Loading creators" /></div>;
   if (q.isError) return <div className="card-pad"><Notice tone="danger">Could not load creators: {q.error.message}</Notice></div>;
   if (!data || data.total === 0) {
-    return <div className="empty empty-state"><Users size={28} aria-hidden /><strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "Qualified creators appear here as soon as they are saved." : kind === "sourced" ? "No creators were saved by this search. Review the latest search above, then use Find more if needed." : "This imported list has no creators. Review its import report above."}</span></div>;
+    return <div className="empty empty-state"><Users size={28} aria-hidden /><strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "Qualified creators appear here as soon as they are saved." : "Add a creator to this list or use the sourcing controls to find new creators."}</span></div>;
   }
   const allSelected = data.selectedCount === data.total;
   const fullPageSelected = rows.length > 0 && pageSelected === rows.length;
@@ -78,6 +81,7 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
           <span>{count(data.selectedCount)} of {count(data.total)} selected{allSelected ? " (all saved creators, across every page)" : ""}.</span>
           <div className="actions">
             <button type="button" className="btn btn-sm btn-primary" disabled={select.isPending} onClick={() => onExport(data.selectedCount, data.total)}><Download size={14} aria-hidden /> Export selected</button>
+            {editable && !live ? <button type="button" className="btn btn-sm btn-danger" disabled={select.isPending} onClick={() => setDialog({ kind: "remove", member: null })}><Trash2 size={14} aria-hidden />Remove selected</button> : null}
             <button type="button" className="link-btn" disabled={select.isPending} onClick={() => select.mutate({ selected: false, all: true })}>
               Clear selection
             </button>
@@ -106,7 +110,8 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
               <th>Profile</th>
               <th className="num">Followers</th>
               <th className="num">Engagement</th>
-              <th>{kind === "sourced" ? "Why they fit" : "Email (from file)"}</th>
+              <th>{kind === "sourced" ? "Why they fit" : "Email (provided)"}</th>
+              {editable && !live ? <th><span className="sr-only">Creator actions</span></th> : null}
             </tr>
           </thead>
           <tbody>
@@ -136,19 +141,22 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
                 </td>
                 <td className="num" data-label="Followers">{count(m.followers)}</td>
                 <td className="num" data-label="Engagement">{percent(m.engagementPercent)}</td>
-                <td className="reason" data-label={kind === "sourced" ? "Why they fit" : "Email (from file)"}>{kind === "sourced" ? m.reason ?? "—" : m.email ?? <span className="dim">—</span>}</td>
+                <td className="reason" data-label={kind === "sourced" ? "Why they fit" : "Email (provided)"}>{kind === "sourced" ? m.source === "import" ? "Added manually" : m.reason ?? "—" : m.email ?? <span className="dim">—</span>}</td>
+                {editable && !live ? <td className="row-actions" data-label="Actions"><div className="actions"><button type="button" className="btn btn-sm btn-ghost" aria-label={`Edit ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "edit", member: m })}><Pencil size={14} aria-hidden />Edit</button><button type="button" className="btn btn-sm btn-ghost btn-danger" aria-label={`Remove ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "remove", member: m })}><Trash2 size={14} aria-hidden />Remove</button></div></td> : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <Pager page={page} pageSize={PAGE} total={data.total} onPage={setPage} label="Creator pages" />
-      {open ? <CreatorDrawer m={open} onClose={() => setOpen(null)} /> : null}
+      {open ? <CreatorDrawer m={open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: open }); setOpen(null); } : undefined} /> : null}
+      {dialog?.kind === "edit" ? <CreatorDialog listId={listId} member={dialog.member} onClose={() => setDialog(null)} onSaved={message => onMessage?.(message)} /> : null}
+      {dialog?.kind === "remove" ? <RemoveCreatorsDialog listId={listId} listName={listName} member={dialog.member} onClose={() => setDialog(null)} onRemoved={message => onMessage?.(message)} /> : null}
     </>
   );
 }
 
-function CreatorDrawer({ m, onClose }: { m: MemberView; onClose: () => void }) {
+function CreatorDrawer({ m, onClose, onEdit }: { m: MemberView; onClose: () => void; onEdit?: (() => void) | undefined }) {
   return (
     <Drawer title={m.displayName ?? `@${m.handle ?? "creator"}`} onClose={onClose}>
       <dl className="kv">
@@ -177,16 +185,15 @@ function CreatorDrawer({ m, onClose }: { m: MemberView; onClose: () => void }) {
           </>
         ) : (
           <>
-            <dt>Email (from file)</dt>
-            <dd>{m.email ?? "—"}</dd>
-            <dt>Location</dt>
-            <dd>{m.location ?? "—"}</dd>
-            <dt>Imported from row</dt>
-            <dd>{m.importRow ?? "—"}</dd>
+            <dt>Added from</dt>
+            <dd>{m.importRow === null ? "Manual entry" : `File row ${m.importRow}`}</dd>
           </>
         )}
         <dt>Saved</dt>
         <dd>{when(m.createdAt)}</dd>
+        <dt>Email (provided)</dt><dd>{m.email ?? "—"}</dd>
+        <dt>Location</dt><dd>{m.location ?? "—"}</dd>
+        <dt>Language</dt><dd>{m.language ?? "—"}</dd>
       </dl>
       {m.accounts.length > 1 ? (
         <section className="stack">
@@ -202,6 +209,7 @@ function CreatorDrawer({ m, onClose }: { m: MemberView; onClose: () => void }) {
         </section>
       ) : null}
       <p className="muted small">Unknown values are shown as “—”. Nothing here was estimated.</p>
+      {onEdit ? <button type="button" className="btn" onClick={onEdit}><Pencil size={14} aria-hidden />Edit details</button> : null}
     </Drawer>
   );
 }

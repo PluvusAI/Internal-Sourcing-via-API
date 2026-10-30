@@ -1,4 +1,7 @@
 import type {
+  CreatorInput,
+  CreatorDetailsPatch,
+  MemberView,
   DraftCriteria,
   ExclusionPreview,
   ExportRequest,
@@ -92,6 +95,10 @@ export const api = {
   updateList: (id: string, patch: { name?: string; criteria?: DraftCriteria; targetCount?: number | null; excludedListIds?: string[]; baseRevision?: number }) =>
     json<ListDetail>("PATCH", `/lists/${id}`, patch),
   archiveList: (id: string, archived: boolean) => json<ListDetail>("POST", `/lists/${id}/archive`, { archived }),
+  removeList: (id: string) => json<{ removed: boolean }>("DELETE", `/lists/${id}`),
+  addCreator: (id: string, body: CreatorInput) => json<{ member: MemberView; existing: boolean; restored: boolean }>("POST", `/lists/${id}/members`, body),
+  updateCreator: (id: string, memberId: string, body: CreatorDetailsPatch) => json<{ member: MemberView }>("PATCH", `/lists/${id}/members/${memberId}`, body),
+  removeCreators: (id: string, memberIds: string[]) => json<{ removedCount: number }>("DELETE", `/lists/${id}/members`, { memberIds }),
   members: (id: string, p: { page?: number; pageSize?: number }) => json<MemberPage>("GET", `/lists/${id}/members${qs(p)}`),
   selection: (id: string) => json<{ memberIds: string[]; selectedCount: number }>("GET", `/lists/${id}/selection`),
   setSelection: (id: string, body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) => json<{ selectedCount: number }>("PUT", `/lists/${id}/selection`, body),
@@ -101,6 +108,7 @@ export const api = {
   previewImport: (csv: string, mapping: ImportMapping | null) => json<ImportReport>("POST", "/imports/preview", { csv, mapping }),
   commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial: boolean }, idempotencyKey: string) => json<{ list: ListDetail; report: ImportReport }>("POST", "/imports", body, { "Idempotency-Key": idempotencyKey }),
   suggest: (body: { brief: string; brandName?: string; product?: string; platforms: SourcingPlatform[] }) => json<InternalSuggestion>("POST", "/criteria/suggest", body),
+  suggestionStatus: () => json<{ available: boolean; message: string | null }>("GET", "/criteria/suggest/status"),
   /** The file as a Blob, the row count the source wrote, and its name. */
   async exportList(id: string, body: ExportRequest): Promise<{ blob: Blob; count: number; filename: string }> {
     const res = await send("POST", `/lists/${id}/export`, body);

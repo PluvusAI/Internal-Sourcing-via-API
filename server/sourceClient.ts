@@ -255,6 +255,8 @@ export interface SourceMeta {
 
 export type ExportFormat = "default" | "sheets";
 export type ExportRequest = { format: ExportFormat; scope: "all" } | { format: ExportFormat; scope: "selected"; memberIds: string[] };
+export interface CreatorDetailsPatch { displayName?: string | null; email?: string | null; location?: string | null; language?: string | null }
+export interface CreatorInput extends CreatorDetailsPatch { platform?: IdentityPlatform | null; handle?: string; profileUrl?: string }
 
 export class InternalSourcingApiError extends Error {
   constructor(
@@ -382,6 +384,10 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
       actor?: Actor,
     ) => call<ListDetail>("PATCH", `/lists/${id(listId)}`, patch, actorHeaders(actor)),
     archiveList: (listId: string, archived: boolean, actor?: Actor) => call<ListDetail>("POST", `/lists/${id(listId)}/archive`, { archived }, actorHeaders(actor)),
+    removeList: (listId: string, actor?: Actor) => call<{ removed: boolean }>("DELETE", `/lists/${id(listId)}`, undefined, actorHeaders(actor)),
+    addCreator: (listId: string, body: CreatorInput, actor?: Actor) => call<{ member: MemberView; existing: boolean; restored: boolean }>("POST", `/lists/${id(listId)}/members`, body, actorHeaders(actor)),
+    updateCreator: (listId: string, memberId: string, body: CreatorDetailsPatch, actor?: Actor) => call<{ member: MemberView }>("PATCH", `/lists/${id(listId)}/members/${id(memberId)}`, body, actorHeaders(actor)),
+    removeCreators: (listId: string, memberIds: string[], actor?: Actor) => call<{ removedCount: number }>("DELETE", `/lists/${id(listId)}/members`, { memberIds }, actorHeaders(actor)),
     members: (listId: string, p: { page?: number; pageSize?: number } = {}) => call<MemberPage>("GET", `/lists/${id(listId)}/members${qs({ page: p.page, pageSize: p.pageSize })}`),
     selection: (listId: string) => call<{ memberIds: string[]; selectedCount: number }>("GET", `/lists/${id(listId)}/selection`),
     setSelection: (listId: string, body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) =>
