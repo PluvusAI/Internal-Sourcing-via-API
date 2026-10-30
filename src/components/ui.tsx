@@ -1,21 +1,50 @@
-import { AlertTriangle, CheckCircle2, ChevronDown, Info, Loader2, X } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Info, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import type { ListStatus } from "../../server/sourceClient";
 import { STATUS_LABELS, STATUS_TONE } from "../lib/format";
 
-export function Spinner({ label = "Loading" }: { label?: string }) {
+/** 21st.dev @animbits/loaders-spinner, adapted to CSS and reduced motion. */
+export function Spinner({ label = "Loading", large = false, decorative = false }: { label?: string; large?: boolean; decorative?: boolean }) {
   return (
-    <span className="inline" role="status">
-      <Loader2 size={16} className="spin" aria-hidden />
-      <span className="sr-only">{label}</span>
+    <span className="inline loading-indicator" role={decorative ? undefined : "status"} aria-label={decorative ? undefined : label} aria-hidden={decorative || undefined}>
+      <span className={`loader-spinner${large ? " loader-spinner-large" : ""}`} aria-hidden />
     </span>
   );
+}
+
+export function LoadingStatus({ label }: { label: string }) {
+  return <span className="loading-status" role="status" aria-label={label}><Spinner decorative /><span>{label}…</span></span>;
+}
+
+/** 21st.dev @animbits/loaders-skeleton shimmer, using the existing theme. */
+export function Skeleton({ className = "" }: { className?: string }) {
+  return <span className={`skeleton ${className}`} aria-hidden="true" />;
+}
+
+export function TableSkeleton({ label = "Loading", rows = 5 }: { label?: string; rows?: number }) {
+  return <div className="table-skeleton" role="status" aria-label={label}>
+    <span className="loading-status table-loading-label"><Spinner decorative /><span>{label}…</span></span>
+    {Array.from({ length: rows }, (_, index) => <div className="skeleton-row" key={index} aria-hidden="true">
+      <Skeleton className="skeleton-avatar" />
+      <span className="stack skeleton-identity"><Skeleton /><Skeleton className="skeleton-short" /></span>
+      <Skeleton className="skeleton-detail" /><Skeleton className="skeleton-detail" />
+    </div>)}
+  </div>;
+}
+
+export function PageSkeleton({ label = "Loading workspace" }: { label?: string }) {
+  return <div className="page-skeleton" role="status" aria-label={label}>
+    <span className="loading-status"><Spinner decorative /><span>{label}…</span></span>
+    <div className="stack skeleton-heading" aria-hidden="true"><Skeleton className="skeleton-short" /><Skeleton /><Skeleton /></div>
+    <div className="metric-grid" aria-hidden="true">{[0, 1, 2, 3].map(i => <div className="card card-pad stack" key={i}><Skeleton className="skeleton-short" /><Skeleton /></div>)}</div>
+    <div className="card" aria-hidden="true"><TableSkeleton label="Loading creator data" /></div>
+  </div>;
 }
 
 export function StatusBadge({ status }: { status: ListStatus }) {
   const tone = STATUS_TONE[status];
   return (
-    <span className={`badge ${tone === "neutral" ? "" : `badge-${tone}`}`}>
+    <span className={`badge ${tone === "neutral" ? "" : `badge-${tone}`} ${status === "queued" || status === "sourcing" ? "badge-pending" : ""}`}>
       <span className="dot" aria-hidden />
       {STATUS_LABELS[status]}
     </span>
@@ -86,13 +115,18 @@ function useFocusTrap(onClose: () => void, closeDisabled = false) {
     const opener = document.activeElement as HTMLElement | null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const first = ref.current?.querySelector<HTMLElement>("[data-autofocus]") ?? ref.current?.querySelector<HTMLElement>(FOCUSABLE);
-    first?.focus();
+    const available = (el: HTMLElement) => !el.matches(":disabled") && el.getClientRects().length > 0;
+    const first = [...(ref.current?.querySelectorAll<HTMLElement>("[data-autofocus]") ?? [])].find(available) ?? [...(ref.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])].find(available);
+    if (first) first.focus();
+    else ref.current?.focus();
     return () => {
       document.body.style.overflow = previousOverflow;
       opener?.focus?.();
     };
   }, []);
+  useEffect(() => {
+    if (closeDisabled && (!ref.current?.contains(document.activeElement) || document.activeElement?.matches(":disabled"))) ref.current?.focus();
+  }, [closeDisabled]);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -101,8 +135,8 @@ function useFocusTrap(onClose: () => void, closeDisabled = false) {
       return;
     }
     if (e.key !== "Tab" || !ref.current) return;
-    const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
-    if (items.length === 0) return;
+    const items = [...ref.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.matches(":disabled") && el.getClientRects().length > 0);
+    if (items.length === 0) { e.preventDefault(); return; }
     const first = items[0]!;
     const last = items[items.length - 1]!;
     if (e.shiftKey && document.activeElement === first) {
@@ -121,7 +155,7 @@ export function Modal({ title, onClose, children, footer, wide, closeDisabled = 
   const trap = useFocusTrap(onClose, closeDisabled);
   return (
     <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && !closeDisabled && onClose()}>
-      <div className={`dialog ${wide ? "dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={trap.ref} onKeyDown={trap.onKeyDown}>
+      <div className={`dialog ${wide ? "dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={trap.ref} onKeyDown={trap.onKeyDown}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
           <button type="button" className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close" disabled={closeDisabled}>
@@ -141,7 +175,7 @@ export function Drawer({ title, onClose, children }: { title: string; onClose: (
   return (
     <>
       <div className="drawer-backdrop" onMouseDown={onClose} aria-hidden />
-      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={trap.ref} onKeyDown={trap.onKeyDown}>
+      <aside className="drawer" role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} ref={trap.ref} onKeyDown={trap.onKeyDown}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
           <button type="button" className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close details">
@@ -168,7 +202,7 @@ export function TagInput({ id, values, onChange, placeholder, max, invalid, desc
     <div className="tags" data-invalid={invalid ? "true" : undefined}>
       {values.map((v) => (
         <span className="tag" key={v}>
-          {v}
+            <span>{v}</span>
           <button type="button" aria-label={`Remove ${v}`} onClick={() => onChange(values.filter((x) => x !== v))}>
             ×
           </button>
@@ -193,18 +227,18 @@ export function TagInput({ id, values, onChange, placeholder, max, invalid, desc
   );
 }
 
-export function Pager({ page, pageSize, total, onPage, label }: { page: number; pageSize: number; total: number; onPage: (p: number) => void; label: string }) {
+export function Pager({ page, pageSize, total, onPage, label, loading = false }: { page: number; pageSize: number; total: number; onPage: (p: number) => void; label: string; loading?: boolean }) {
   const pages = Math.max(1, Math.ceil(total / pageSize));
   if (total <= pageSize) return null;
   return (
-    <nav className="pager" aria-label={label}>
+    <nav className="pager" aria-label={label} aria-busy={loading}>
       <span className="muted small">
         {(page - 1) * pageSize + 1}–{Math.min(page * pageSize, total)} of {total.toLocaleString("en-US")}
       </span>
-      <button type="button" className="btn btn-sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+      <button type="button" className="btn btn-sm" disabled={loading || page <= 1} onClick={() => onPage(page - 1)}>
         Previous
       </button>
-      <button type="button" className="btn btn-sm" disabled={page >= pages} onClick={() => onPage(page + 1)}>
+      <button type="button" className="btn btn-sm" disabled={loading || page >= pages} onClick={() => onPage(page + 1)}>
         Next
       </button>
     </nav>

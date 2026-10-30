@@ -6,7 +6,7 @@ import { api } from "../api";
 import { NewListDialog } from "../components/Dialogs";
 import { ImportDialog } from "../components/ImportDialog";
 import { RemoveListAction } from "../components/CreatorDialogs";
-import { Notice, Pager, Spinner, StatusBadge, useDebounced } from "../components/ui";
+import { Notice, Pager, Spinner, StatusBadge, TableSkeleton, useDebounced } from "../components/ui";
 import { count, when } from "../lib/format";
 import { useArchiveList } from "../lib/archive";
 import { linkHandler, listHref, setParams, useLocation, useScrollRestoration } from "../router";
@@ -67,7 +67,7 @@ export function ListsHome() {
         <div>
           <span className="eyebrow">Workspace / Creator sourcing</span>
           <h1>{showArchived ? "Archived lists" : "Creator lists"}</h1>
-          <p className="context">Imported rosters and sourced batches, named by brand. Pick any of them as exclusions when you source a new list.</p>
+          <p className="context">Find your next creators. Keep every roster and search in one place.</p>
         </div>
         <div className="actions">
           <button type="button" className="btn" onClick={() => setDialog({ kind: "import" })}>
@@ -95,7 +95,7 @@ export function ListsHome() {
         <button type="button" className="btn btn-sm btn-ghost" onClick={() => archive.reset()} aria-label="Dismiss archive notification">Dismiss</button>
       </div> : null}
 
-      <div className="card library-card">
+      <div className="card library-card" aria-busy={lists.isLoading || resultsSettling}>
         <div className="toolbar">
           <div className="search">
             <Search size={16} aria-hidden />
@@ -111,14 +111,13 @@ export function ListsHome() {
         </div>
 
         {lists.isLoading || resultsSettling ? (
-          <div className="empty">
-            <Spinner label={typed.current && q.trim() !== urlQ ? "Searching lists" : "Loading lists"} />
-          </div>
+          <TableSkeleton label={typed.current && q.trim() !== urlQ ? "Searching lists" : "Loading lists"} />
         ) : lists.isError ? (
           <div className="card-pad">
             <Notice tone="danger" title="Lists could not be loaded">
               {lists.error.message}
             </Notice>
+            <button type="button" className="btn btn-sm retry-button" onClick={() => void lists.refetch()}>Try again</button>
           </div>
         ) : data && data.total === 0 ? (
           urlQ ? (
@@ -169,10 +168,12 @@ export function ListsHome() {
                   {data.lists.map((l) => (
                     <tr key={l.id}>
                       <td className="name" data-label="Name">
+                        <div className="list-identity"><span className={`list-icon ${l.kind === "sourced" ? "list-icon-sourced" : ""}`} aria-hidden>{l.kind === "imported" ? <Upload size={18} /> : <Search size={18} />}</span><div>
                         <a href={listHref(l.id)} onClick={linkHandler(listHref(l.id))}>
                           {l.name}
                         </a>
                         {l.archivedAt ? <div className="cell-sub">Archived</div> : null}
+                        </div></div>
                       </td>
                       <td data-label="Type">{l.kind === "imported" ? "Imported" : "Sourced"}</td>
                       <td className="num" data-label="Creators">{count(l.memberCount)}</td>

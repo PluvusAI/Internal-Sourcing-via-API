@@ -5,7 +5,7 @@ import { api, ApiError } from "../api";
 import { Trash2 } from "lucide-react";
 import { count } from "../lib/format";
 import { refreshListData } from "../lib/listUpdates";
-import { Modal, NativeSelect, Notice, Spinner, errorText, useIsMounted } from "./ui";
+import { LoadingStatus, Modal, NativeSelect, Notice, Spinner, errorText, useIsMounted } from "./ui";
 
 /** Form and confirmation flow adapted from 21st.dev/@ruixen.ui/components/table-dialog. */
 export function CreatorDialog({ listId, member = null, onClose, onSaved }: { listId: string; member?: MemberView | null; onClose: () => void; onSaved: (message: string) => void }) {
@@ -38,7 +38,7 @@ export function CreatorDialog({ listId, member = null, onClose, onSaved }: { lis
   const submit = (): void => { if (!ready || submitting.current) return; submitting.current = true; save.mutate(); };
   return <Modal title={member ? "Edit creator details" : "Add a creator"} onClose={close} closeDisabled={save.isPending} footer={<>
     <button type="button" className="btn" onClick={close} disabled={save.isPending}>Cancel</button>
-    <button type="submit" form={`${id}-form`} className="btn btn-primary" disabled={!ready || save.isPending}>{save.isPending ? <Spinner label="Saving creator" /> : null}{member ? "Save changes" : "Add creator"}</button>
+    <button type="submit" form={`${id}-form`} className="btn btn-primary" disabled={!ready || save.isPending}>{save.isPending ? <Spinner decorative /> : null}{save.isPending ? member ? "Saving changes…" : "Adding creator…" : member ? "Save changes" : "Add creator"}</button>
   </>}>
     <form id={`${id}-form`} className="stack" onSubmit={e => { e.preventDefault(); submit(); }}>
       {member ? <Notice tone="neutral">{member.platform} @{member.handle}. To correct the profile identity, remove this creator and add the correct profile. Search history stays attached to the original identity.</Notice> : <>
@@ -75,7 +75,7 @@ export function RemoveCreatorsDialog({ listId, listName, member = null, onClose,
     <button type="button" data-autofocus className="btn" disabled={remove.isPending} onClick={close}>Keep creators</button>
     <button type="button" className="btn btn-danger" disabled={ids.length === 0 || remove.isPending || (!member && selection.isFetching)} onClick={() => { if (!submitting.current) { submitting.current = true; remove.mutate(); } }}>{remove.isPending ? <Spinner label="Removing creators" /> : null}Remove {count(ids.length)} {ids.length === 1 ? "creator" : "creators"}</button>
   </>}>
-    {!member && selection.isFetching ? <Spinner label="Checking selected creators" /> : <p>Remove {count(ids.length)} {ids.length === 1 ? "creator" : "creators"} from <strong>{listName}</strong>? Other lists are unaffected. Removed profiles are skipped by future searches on this list; adding a profile again restores it.</p>}
+    {!member && selection.isFetching ? <LoadingStatus label="Checking selected creators" /> : !member && selection.isError ? null : <p>Remove {count(ids.length)} {ids.length === 1 ? "creator" : "creators"} from <strong>{listName}</strong>? Other lists are unaffected. Removed profiles are skipped by future searches on this list; adding a profile again restores it.</p>}
     <Notice tone="neutral">Past search results and running exclusion snapshots are kept. Future searches that exclude this list use its remaining creators.</Notice>
     {selection.isError ? <Notice tone="danger">{errorText(selection.error)}</Notice> : null}
     {remove.isError ? <Notice tone="danger">{errorText(remove.error)}</Notice> : null}

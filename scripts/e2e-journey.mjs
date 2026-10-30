@@ -62,7 +62,7 @@ async function waitForStatus(re, timeout = 90_000) {
   await page.locator(".page-head .badge").filter({ hasText: re }).first().waitFor({ timeout });
 }
 
-const handlesOnPage = async () => (await page.locator("table.table tbody td:nth-child(3) .muted").allTextContents()).map((t) => t.replace(/^@/, ""));
+const handlesOnPage = async () => (await page.locator("table.table tbody .creator-handle").allTextContents()).map((t) => t.replace(/^@/, ""));
 
 try {
   step("import Brand A - Existing creators (with a duplicate and an unusable row)");
@@ -118,7 +118,7 @@ try {
   await page.getByLabel("New qualifying creators to find").fill("5");
   await page.getByText("Saved", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Find creators" }).click();
-  await page.getByRole("heading", { name: "Latest search" }).waitFor();
+  await page.getByRole("region", { name: "Search progress", exact: true }).waitFor();
   await waitForStatus(/Complete|Partial|Empty|Failed/);
   await page.getByText("5 of 5 new creators", { exact: true }).waitFor();
   const batch1 = await handlesOnPage();
@@ -194,7 +194,7 @@ try {
   await page.goto(`${base}/?q=${encodeURIComponent(A)}`);
   await page.getByText(`4 lists match “${A}”`).waitFor();
   await page.getByRole("link", { name: `${A} - Batch 1` }).first().click();
-  await page.getByRole("heading", { name: "Latest search" }).waitFor();
+  await page.getByRole("region", { name: "Search progress", exact: true }).waitFor();
   await page.goBack();
   await page.getByText(`4 lists match “${A}”`).waitFor();
   assert.equal(await page.getByPlaceholder("Search lists by brand or list name").inputValue(), A);

@@ -1,4 +1,7 @@
 import type {
+  EmailScope,
+  EmailPreview,
+  EmailJobView,
   CreatorInput,
   CreatorDetailsPatch,
   MemberView,
@@ -104,6 +107,9 @@ export const api = {
   setSelection: (id: string, body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) => json<{ selectedCount: number }>("PUT", `/lists/${id}/selection`, body),
   startOperation: (id: string, body: { idempotencyKey: string; kind: "initial" | "find_more"; targetCount?: number; baseRevision?: number }) =>
     json<{ operation: OperationView; idempotentReplay: boolean }>("POST", `/lists/${id}/operations`, body),
+  previewEmails: (id: string, scope: EmailScope) => json<EmailPreview>("POST", `/lists/${id}/email-jobs/preview`, scope),
+  startEmailJob: (id: string, body: { memberIds: string[]; maxCredits: number; idempotencyKey: string }) => json<{ job: EmailJobView; idempotentReplay: boolean }>("POST", `/lists/${id}/email-jobs`, body),
+  emailJob: (id: string) => json<{ job: EmailJobView | null }>("GET", `/lists/${id}/email-jobs`),
   previewExclusions: (listIds: string[]) => json<ExclusionPreview>("POST", "/exclusions/preview", { listIds }),
   previewImport: (csv: string, mapping: ImportMapping | null) => json<ImportReport>("POST", "/imports/preview", { csv, mapping }),
   commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial: boolean }, idempotencyKey: string) => json<{ list: ListDetail; report: ImportReport }>("POST", "/imports", body, { "Idempotency-Key": idempotencyKey }),

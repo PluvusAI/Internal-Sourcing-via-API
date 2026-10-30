@@ -4,7 +4,8 @@ import { useEffect, useId, useRef, useState } from "react";
 import { api, ApiError } from "../api";
 import { count } from "../lib/format";
 import { addAll, matchState, removeAll, selectedIds, summaryText, toggle, type Selection } from "../lib/selection";
-import { Notice, Pager, Spinner, StatusBadge, useDebounced } from "./ui";
+import { Notice, Pager, Spinner, StatusBadge, TableSkeleton, useDebounced } from "./ui";
+import { CreatorAvatar } from "./CreatorAvatar";
 
 const PAGE = 8;
 
@@ -89,9 +90,9 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
           </div>
         ) : null}
         <p className="summary-line" aria-live="polite">
-          {summaryText(ids.length, unique)}
+          {ids.length > 0 && unique === null && !union.isError ? <Spinner decorative /> : null}{union.isError && unique === null ? `${ids.length} lists selected; unique creator count unavailable.` : summaryText(ids.length, unique)}
         </p>
-        {union.isError ? <Notice tone="danger">{union.error.message}</Notice> : null}
+        {union.isError ? <Notice tone="danger">{union.error.message} <button type="button" className="link-btn" onClick={() => void union.refetch()}>Try again</button></Notice> : null}
       </div>
       {!locked ? (
         <>
@@ -129,10 +130,11 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
               {results.isFetching ? <Spinner label="Searching" /> : null}
             </div>
             {resultsSettling || results.isLoading ? (
-              <div className="picker-row"><Spinner label="Loading matching lists" /></div>
+              <TableSkeleton label="Loading matching lists" rows={3} />
             ) : results.isError ? (
               <div className="picker-row">
                 <span className="error-text">Could not load lists: {results.error.message}</span>
+                <button type="button" className="btn btn-sm" onClick={() => void results.refetch()}>Try again</button>
               </div>
             ) : rows.length === 0 && !results.isLoading ? (
               <div className="picker-row muted">
@@ -182,13 +184,13 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
 
 function ListPreview({ listId }: { listId: string }) {
   const q = useQuery({ queryKey: ["preview", listId], queryFn: () => api.members(listId, { page: 1, pageSize: 8 }) });
-  if (q.isLoading) return <div className="preview-list">Loading…</div>;
-  if (q.isError) return <div className="preview-list error-text">{q.error.message}</div>;
+  if (q.isLoading) return <TableSkeleton label="Loading creator preview" rows={2} />;
+  if (q.isError) return <div className="preview-list"><span className="error-text">{q.error.message}</span> <button type="button" className="btn btn-sm" onClick={() => void q.refetch()}>Try again</button></div>;
   const d = q.data!;
   return (
-    <div className="preview-list">
-      {d.members.map((m) => `${m.platform ?? "?"} @${m.handle ?? "?"}`).join(", ")}
-      {d.total > d.members.length ? ` and ${count(d.total - d.members.length)} more` : ""}
+    <div className="preview-list preview-creators">
+      {d.members.map((m) => <div className="preview-creator" key={m.id}><CreatorAvatar member={m} /><span><strong>{m.displayName ?? m.handle ?? "Creator"}</strong><span className="cell-sub">{m.platform ?? "Unknown platform"} · @{m.handle ?? "—"}</span></span></div>)}
+      {d.total > d.members.length ? <span className="small muted">and {count(d.total - d.members.length)} more creators</span> : null}
     </div>
   );
 }

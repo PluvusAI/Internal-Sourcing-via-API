@@ -223,6 +223,21 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
       if (id && op) res.json(await source().getOperation(id, op));
     }),
   );
+  api.post("/lists/:id/email-jobs/preview", asyncRoute(async (req, res) => {
+    const id = idParam(req, res); if (id) res.json(await source().previewEmails(id, req.body));
+  }));
+  api.post("/lists/:id/email-jobs", asyncRoute(async (req, res) => {
+    const id = idParam(req, res); if (!id) return;
+    const { idempotencyKey, ...body } = req.body ?? {};
+    if (typeof idempotencyKey !== "string" || !KEY.test(idempotencyKey)) return void res.status(400).json({ error: { code: "idempotency_key_required", message: "An email lookup needs an idempotency key." } });
+    res.status(202).json(await source().startEmailJob(id, { ...body, idempotencyKey }, actor(res)));
+  }));
+  for (const path of ["/lists/:id/email-jobs", "/lists/:id/email-jobs/:jobId"]) api.get(path, asyncRoute(async (req, res) => {
+    const id = idParam(req, res); if (!id) return;
+    const jobId = req.params["jobId"] ? idParam(req, res, "jobId") : undefined;
+    if (jobId === null) return;
+    res.json(await source().emailJob(id, jobId));
+  }));
   api.post(
     "/lists/:id/export",
     asyncRoute(async (req, res) => {
