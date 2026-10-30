@@ -153,7 +153,7 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
         </table>
       </div>
       <Pager page={page} pageSize={PAGE} total={data.total} onPage={setPage} label="Creator pages" />
-      {open ? <CreatorDrawer m={data.members.find(m => m.id === open.id) ?? open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: open }); setOpen(null); } : undefined} /> : null}
+      {open ? <CreatorDrawer m={data.members.find(m => m.id === open.id) ?? open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: data.members.find(m => m.id === open.id) ?? open }); setOpen(null); } : undefined} /> : null}
       {dialog?.kind === "edit" ? <CreatorDialog listId={listId} member={dialog.member} onClose={() => setDialog(null)} onSaved={message => onMessage?.(message)} /> : null}
       {dialog?.kind === "remove" ? <RemoveCreatorsDialog listId={listId} listName={listName} member={dialog.member} onClose={() => setDialog(null)} onRemoved={message => onMessage?.(message)} /> : null}
     </>
