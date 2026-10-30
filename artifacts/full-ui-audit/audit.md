@@ -48,4 +48,4 @@ Screenshots in `screens/`, `regression/`, and `journey/` are local test evidence
 
 ## Second pass
 
-See [component-review.md](component-review.md) for the current component inventory, slow-request animation verification, additional fixes and latest regression status. Release verification is 52/52 app tests against the matching email-backend dependency (PR #491); UI/typecheck/build checks pass. The previous contract mismatch was the older backend checkout, not the matching API client.
+See [component-review.md](component-review.md) for the current component inventory, slow-request animation verification, additional fixes and latest regression status. Release verification is 52/53 app tests against the matching email-backend dependency (PR #491); UI/typecheck/build checks pass. The previous contract mismatch was the older backend checkout, not the matching API client.

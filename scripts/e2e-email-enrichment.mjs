@@ -21,11 +21,12 @@ const api = async (path, method = 'GET', body) => {
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
 const errors = []; page.on('pageerror', e => errors.push(e.message));
-async function submitEmails() {
+async function submitEmails(beforeFinish) {
   const responsePromise = page.waitForResponse(r => r.request().method() === 'POST' && /\/email-jobs$/.test(new URL(r.url()).pathname));
   await page.getByRole('dialog').getByRole('button', { name: 'Find emails', exact: true }).click();
   const response = await responsePromise; assert.ok(response.ok()); const started = await response.json();
   await page.getByRole('dialog').waitFor({ state: 'detached' });
+  if (beforeFinish) await beforeFinish();
   for (let i = 0; i < 60; i++) { const {job} = await api(`/lists/${listId}/email-jobs`); if (job?.id === started.job.id && !['queued','running'].includes(job.status)) break; await new Promise(r => setTimeout(r, 500)); }
   await page.getByText('Email lookup finished', { exact: true }).waitFor({ timeout: 30000 });
 }
@@ -51,7 +52,10 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.screenshot({ path: join(shots, '02-preview-phone.png'), fullPage: true, animations: 'disabled' });
-  await submitEmails();
+  await submitEmails(async () => { await page.getByRole('button', { name: sourced[0].displayName, exact: true }).click(); });
+  await page.getByRole('button', { name: 'Edit details', exact: true }).click();
+  assert.equal(await page.getByRole('dialog').locator('input[type="email"]').inputValue(), `${sourced[0].handle}@example.com`, 'editing a drawer opened before lookup finished uses the latest saved email');
+  await page.getByRole('dialog').getByRole('button', { name: 'Cancel', exact: true }).click();
   let members = (await api(`/lists/${list.id}/members`)).members;
   assert.equal(members.filter(m => m.email).length, 3); // Two selected sourced profiles plus supplied address.
   assert.equal(members.find(m => m.id === sourced[2].id).email, null);

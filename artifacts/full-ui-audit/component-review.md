@@ -54,6 +54,6 @@
 - `e2e-ui-audit.mjs` rechecks photos/fallbacks, counter labels, all search outcomes, drawer focus, dialogs, error recovery, mobile/dark mode and overflow.
 - `e2e-sourcing-polish.mjs` rechecks archive races/restore/undo, library URL navigation, draft validation, suggestions/autosave, limits and responsive steps.
 - 21st deterministic review: 0 errors; the existing rename autofocus warning remains intentional following the explicit Rename action. Original theme-token color suggestions remain informational.
-- Release verification: all 52 app tests pass with `SOURCING_BACKEND_DIR=../creator-email-backend npm test`. The earlier mismatch came from comparing the app with an older backend checkout. The client is byte-identical to the matching backend dependency in PR #491; the contract guard is unchanged. The backend email DB scenarios and server typecheck also pass.
+- Release verification: all 53 app tests pass with `SOURCING_BACKEND_DIR=../creator-email-backend npm test`. The earlier mismatch came from comparing the app with an older backend checkout. The client is byte-identical to the matching backend dependency in PR #491; the contract guard is unchanged. The backend email DB scenarios and server typecheck also pass.
 
 `component-states/` contains held-request screenshots. `second-pass/` contains the final layout/state captures. Live provider calls, real Clerk sign-in and production deployment are outside this local UI verification.

@@ -73,6 +73,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
   const deletedLists = new Set<string>();
   const removedRows = new Map<string, Map<string, MemberView>>();
   const emailJobs = new Map<string, EmailJobView>();
+  const emailHistory = new Map<string, { listId: string; job: EmailJobView }>();
   const emailKeys = new Map<string, { hash: string; job: EmailJobView }>();
   const emailCache = new Map<string, string>();
   let sampleSeq = 0;
@@ -267,7 +268,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       if (!rows.length) fail(409, "empty_scope", "Select creators or choose the whole list.");
       if (scope.scope === "selected" && rows.length !== new Set(scope.memberIds).size) fail(400, "unknown_members", "Some creators are no longer on this list.");
       const available = rows.filter(m => m.email).length;
-      const reusable = rows.filter(m => !m.email && emailCache.has(keyOf(m))).length;
+      const reusable = rows.filter(m => !m.email && m.emailLookupStatus !== "cleared" && m.platform && m.handle && emailCache.has(keyOf(m))).length;
       const skipped = rows.filter(m => !m.email && (!m.platform || !m.handle || m.emailLookupStatus === "cleared")).length;
       const eligible = rows.length - available - reusable - skipped;
       return { memberIds: rows.map(m => m.id), total: rows.length, available, reusable, eligible, skipped, cachedNotFound: 0, estimatedMaxCredits: Math.min(2, eligible * 0.2), creditCap: 2, dailyRemaining: 20 } satisfies EmailPreview;
@@ -281,6 +282,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       if (!rows.length || rows.length !== new Set(body.memberIds).size) fail(400, "unknown_members", "Choose saved creators from this list.");
       const counts: Record<string, number> = {}; let creditsSpent = 0; const cap = Math.min(2, body.maxCredits);
       for (const m of rows) {
+        const hadEmail = Boolean(m.email);
         let status = "reused";
         if (m.email) status = "reused";
         else if (m.emailLookupStatus === "cleared" || !m.platform || !m.handle) status = "skipped";
@@ -288,15 +290,21 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         else if (creditsSpent + 0.2 > cap + 1e-9) status = "not_processed";
         else if (m.handle.includes("missing")) status = "not_found";
         else { m.email = `${m.handle}@example.com`; emailCache.set(keyOf(m), m.email); creditsSpent = +(creditsSpent + 0.2).toFixed(4); status = "found"; }
-        m.emailLookupStatus = m.email ? "available" : status; m.emailCheckedAt = now();
-        if (m.email && status !== "skipped") m.emailSource ??= "influencers_club";
+        if (m.emailLookupStatus !== "cleared") { m.emailLookupStatus = m.email ? "available" : status; m.emailCheckedAt = now(); }
+        if (m.email && status !== "skipped") m.emailSource ??= hadEmail ? "provided" : "influencers_club";
         counts[status] = (counts[status] ?? 0) + 1;
       }
       const job: EmailJobView = { id: id(), status: counts.not_processed ? "partial" : "completed", outcome: counts.not_processed ? "credit_ceiling" : null, counts, total: rows.length, creditsSpent, creditsHeld: creditsSpent, creditCap: cap, createdAt: now(), completedAt: now(), pollAfterSeconds: null };
-      emailJobs.set(listId, job); emailKeys.set(k, { hash, job });
+      emailJobs.set(listId, job); emailHistory.set(job.id, { listId, job }); emailKeys.set(k, { hash, job });
       return { job, idempotentReplay: false };
     },
-    async emailJob(listId) { get(listId); return { job: emailJobs.get(listId) ?? null }; },
+    async emailJob(listId, jobId) {
+      get(listId);
+      if (!jobId) return { job: emailJobs.get(listId) ?? null };
+      const found = emailHistory.get(jobId) ?? fail(404, "job_not_found", "No such email job.");
+      if (found.listId !== listId) fail(404, "job_not_found", "No such email job.");
+      return { job: found.job };
+    },
     async meta() {
       return {
         workspace: "mock-workspace",
