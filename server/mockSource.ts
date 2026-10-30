@@ -372,7 +372,6 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     async removeList(listId) {
       const l = get(listId);
       if (["queued", "sourcing"].includes(statusOf(l))) fail(409, "operation_active", "Wait for the search to finish.");
-      if (statusOf(l) !== "draft" && !l.archivedAt) fail(409, "archive_required", "Archive this list before removing it.");
       deletedLists.add(listId); l.archivedAt ??= now();
       return { removed: true };
     },

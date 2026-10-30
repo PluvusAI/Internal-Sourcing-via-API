@@ -665,3 +665,7 @@ code.headers { display: block; white-space: pre-wrap; font-size: 12px; max-heigh
 .email-progress { border-bottom: 1px solid var(--hairline); }
 .email-progress progress { display: block; width: 100%; height: 8px; margin-top: 12px; accent-color: var(--accent); }
 .email-progress p { margin: 8px 0 0; }
+
+.archive-feedback > span { min-width: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.archive-feedback > .actions { margin-left: auto; }
+.archive-feedback > .notice { width: 100%; }

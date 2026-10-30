@@ -192,6 +192,19 @@ export function libraryHref(from: string | null, fallback = "/"): string {
   return `${url.pathname}${url.search}`;
 }
 
+/** When a list changes library views, Back must show its destination without the old filters. */
+export function listReturnHref(from: string | null, archived: boolean | undefined): string {
+  if (archived === undefined) return libraryHref(from);
+  const url = new URL(libraryHref(from, archived ? "/?archived=1" : "/"), "http://local");
+  if ((url.searchParams.get("archived") === "1") !== archived) {
+    url.searchParams.delete("q");
+    url.searchParams.delete("page");
+    if (archived) url.searchParams.set("archived", "1");
+    else url.searchParams.delete("archived");
+  }
+  return `${url.pathname}${url.search}`;
+}
+
 export function listHref(id: string): string {
   const current = new URL(window.location.href);
   const from = current.pathname === "/" ? `${current.pathname}${current.search}` : libraryHref(current.searchParams.get("from"));

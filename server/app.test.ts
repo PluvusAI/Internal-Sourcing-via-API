@@ -413,3 +413,21 @@ test("sample previews preserve cleared cached contacts, supplied provenance and 
   await assert.rejects(() => mock.emailJob(second.id, one.job.id), /No such email job/);
   await assert.rejects(() => mock.emailJob(first.id, "unknown-job"), /No such email job/);
 });
+
+test("sample lists can be deleted directly after creation, import or completed sourcing", async () => {
+  const source = createMockSource();
+  const draft = await source.createList({ name: "Delete new list" });
+  await source.removeList(draft.id);
+  await assert.rejects(() => source.getList(draft.id), /No such list/);
+  const csv = "platform,handle\ninstagram,delete_imported";
+  const preview = await source.previewImport(csv);
+  const imported = (await source.commitImport({ csv, name: "Delete active imported list", mapping: preview.mapping })).list;
+  await source.removeList(imported.id);
+  assert.equal((await source.searchLists({ includeArchived: true })).lists.some(l => l.id === imported.id), false);
+  const sourced = await source.createList({ name: "Delete completed list", criteria: { platforms: [{ platform: "instagram" }], niche: "skincare" }, targetCount: 1 });
+  await source.startOperation(sourced.id, { kind: "initial", idempotencyKey: "lifecycle-sourcing-key", baseRevision: sourced.draftRevision });
+  await assert.rejects(() => source.removeList(sourced.id), /search to finish/);
+  for (let i = 0; i < 5; i++) { const list = await source.getList(sourced.id); if (!["queued", "sourcing"].includes(list.status)) break; }
+  await source.removeList(sourced.id);
+  assert.equal((await source.searchLists({ archivedOnly: true })).lists.some(l => l.id === sourced.id), false);
+});
