@@ -403,8 +403,11 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
     },
     previewExclusions: (listIds: string[]) => call<ExclusionPreview>("POST", "/exclusions/preview", { listIds }),
     previewImport: (csv: string, mapping?: ImportMapping | null) => call<ImportReport>("POST", "/imports/preview", { csv, mapping: mapping ?? null }),
-    commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial?: boolean }, actor?: Actor) =>
-      call<{ list: ListDetail; report: ImportReport }>("POST", "/imports", body, actorHeaders(actor)),
+    commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial?: boolean }, actor?: Actor, idempotencyKey?: string) =>
+      call<{ list: ListDetail; report: ImportReport; idempotentReplay?: boolean }>("POST", "/imports", body, {
+        ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        ...actorHeaders(actor),
+      }),
     suggestCriteria: (body: { brief: string; brandName?: string; product?: string; platforms: SourcingPlatform[] }) => call<InternalSuggestion>("POST", "/criteria/suggest", body),
   };
 }

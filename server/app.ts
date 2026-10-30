@@ -219,7 +219,13 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
       res.json(await source().previewImport(body.csv, (body.mapping as never) ?? null));
     }),
   );
-  api.post("/imports", asyncRoute(async (req, res) => void res.status(201).json(await source().commitImport(req.body, actor(res)))));
+  api.post("/imports", asyncRoute(async (req, res) => {
+    const key = req.headers["idempotency-key"];
+    if (key !== undefined && (typeof key !== "string" || !KEY.test(key))) {
+      return void res.status(400).json({ error: { code: "idempotency_key_invalid", message: "Send a valid Idempotency-Key header." } });
+    }
+    res.status(201).json(await source().commitImport(req.body, actor(res), key));
+  }));
   api.post("/criteria/suggest", asyncRoute(async (req, res) => void res.json(await source().suggestCriteria(req.body))));
 
   api.use((_req, res) => res.status(404).json({ error: { code: "not_found", message: "No such endpoint." } }));

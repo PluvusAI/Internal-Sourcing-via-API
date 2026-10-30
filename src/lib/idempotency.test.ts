@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { clearKey, pendingKey, type KeyStore } from "./idempotency.ts";
+import { clearImportKey, clearKey, importFingerprint, pendingImportKey, pendingKey, type KeyStore } from "./idempotency.ts";
 import { pollMs, progressText } from "./format.ts";
 
 const store = (): KeyStore & { data: Map<string, string> } => {
@@ -23,6 +23,19 @@ test("storage refusing writes falls back to memory for this tab", () => {
   const mem = new Map<string, string>();
   const a = pendingKey(broken, "list1234abcd", "initial", mem);
   assert.equal(pendingKey(broken, "list1234abcd", "initial", mem), a);
+});
+
+test("an import retries with the same key, including after reload, until it succeeds", async () => {
+  const s = store();
+  const request = JSON.stringify({ csv: "platform,handle\ninstagram,janedoe", name: "Brand A", acknowledgePartial: false });
+  const fingerprint = await importFingerprint(request);
+  const first = pendingImportKey(s, fingerprint, new Map());
+  assert.equal(pendingImportKey(s, await importFingerprint(request), new Map()), first);
+  assert.notEqual(pendingImportKey(s, await importFingerprint(request.replace("Brand A", "Brand B")), new Map()), first);
+  clearImportKey(s, fingerprint, new Map());
+  assert.notEqual(pendingImportKey(s, fingerprint, new Map()), first);
+  assert.equal(s.data.has(`isl:pending-import:${fingerprint}`), true);
+  assert.equal([...s.data.values()].some((value) => value.includes("janedoe")), false, "storage holds only a key, never CSV contents");
 });
 
 test("progress uses the real saved count; polling follows the source's interval and stops when finished", () => {

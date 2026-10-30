@@ -154,6 +154,21 @@ test("there is no pass-through: unknown paths 404 and never reach the source; a 
   assert.equal(fake.calls.length, 0);
 });
 
+test("an import retry key is validated and forwarded to the sourcing backend", async () => {
+  const fake = fakeSource(() => ({ status: 201, body: { list: { id: "abcdefgh1234" }, report: { counts: { valid: 1 } } } }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  const body = JSON.stringify({ csv: "platform,handle\ninstagram,janedoe", name: "Brand A", mapping: null, acknowledgePartial: false });
+  const invalid = await fetch(`${base}/api/imports`, { method: "POST", headers: authed("good-org", { "Idempotency-Key": "bad" }), body });
+  assert.equal(invalid.status, 400);
+  assert.equal(fake.calls.length, 0);
+  const key = "import-0123456789abcdef";
+  const valid = await fetch(`${base}/api/imports`, { method: "POST", headers: authed("good-org", { "Idempotency-Key": key }), body });
+  assert.equal(valid.status, 201);
+  assert.equal(fake.calls.length, 1);
+  assert.equal(fake.calls[0]!.headers["idempotency-key"], key);
+  assert.equal(fake.calls[0]!.headers["x-internal-user"], "user_ricky");
+});
+
 test("source errors reach the UI with their code; an unreachable source is a 502, not a crash", async () => {
   const conflict = fakeSource(() => ({ status: 409, body: { error: { code: "operation_active", message: "A search is already running for this list.", operationId: "op123456789" } } }));
   const base = await serve(createApp(loadConfig(liveEnv), { source: conflict.client, verify: allowVerify }));
