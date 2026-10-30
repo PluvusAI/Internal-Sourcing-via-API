@@ -149,7 +149,7 @@ export function FindMoreDialog({ listId, listName, onClose, onStarted }: { listI
 
 export function ExportDialog({ listId, listName, total, selectedCount, onClose }: { listId: string; listName: string; total: number; selectedCount: number; onClose: () => void }) {
   const meta = useMeta();
-  const [format, setFormat] = useState<ExportFormat>("default");
+  const [format, setFormat] = useState<ExportFormat>("sheets");
   const [scope, setScope] = useState<"selected" | "all">(selectedCount > 0 ? "selected" : "all");
   const [done, setDone] = useState<{ filename: string; count: number } | null>(null);
   const run = useMutation({
@@ -203,13 +203,13 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
       <fieldset className="stack" disabled={run.isPending} style={{ border: "none", padding: 0, margin: 0 }}>
         <legend className="field-label">Format</legend>
         <label className="inline">
-          <input type="radio" name="format" checked={format === "default"} onChange={() => setFormat("default")} /> Compact — 20 columns (default)
+          <input type="radio" name="format" checked={format === "default"} onChange={() => setFormat("default")} /> Compact — 20 columns
         </label>
         <label className="inline">
-          <input type="radio" name="format" checked={format === "sheets"} onChange={() => setFormat("sheets")} /> Existing Sheets template — 93 columns
+          <input type="radio" name="format" checked={format === "sheets"} onChange={() => setFormat("sheets")} /> Full details — 93-column Sheets template (default)
         </label>
         {meta.isLoading ? <LoadingStatus label="Loading export formats" /> : meta.isError ? <Notice tone="danger">Could not load export formats. <button type="button" className="link-btn" onClick={() => void meta.refetch()}>Try again</button></Notice> : <><span className="field-label small">Columns, in order ({headers.length})</span><code className="headers">{headers.join(", ")}</code></>}
-        <span className="hint muted small">Unknown values are left blank. Emails include supplied addresses and saved Find emails results. A download never looks up contacts or runs a search.</span>
+        <span className="hint muted small">Full details includes saved emails and available profile details from Find emails, including bios, profile links and follower/post counts. Unknown values stay blank. Downloading uses no extra credits.</span>
       </fieldset>
       <Notice tone="neutral">
         Exporting does not change the list: all {count(total)} saved creators stay on <strong>{listName}</strong>, and a later search that excludes this list excludes all of them — not only the rows you download.
