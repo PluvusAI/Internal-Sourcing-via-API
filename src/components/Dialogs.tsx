@@ -208,7 +208,7 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
         </label>
         <span className="field-label small">Columns, in order ({headers.length})</span>
         {meta.isLoading ? <Spinner /> : <code className="headers">{headers.join(", ")}</code>}
-        <span className="hint muted small">Unknown values are left blank. Emails come only from your file or explicit edits; a download never looks up contacts or runs a search.</span>
+        <span className="hint muted small">Unknown values are left blank. Emails include supplied addresses and saved Find emails results. A download never looks up contacts or runs a search.</span>
       </fieldset>
       <Notice tone="neutral">
         Exporting does not change the list: all {count(total)} saved creators stay on <strong>{listName}</strong>, and a later search that excludes this list excludes all of them — not only the rows you download.

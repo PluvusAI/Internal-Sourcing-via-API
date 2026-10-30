@@ -443,3 +443,10 @@ code.headers { display: block; white-space: pre-wrap; font-size: 12px; max-heigh
 }
 .review-platform { display: flex; flex-direction: column; gap: 4px; padding-right: 20px; }
 .review-platform strong { color: var(--text); font-weight: 600; }
+
+/* Email enrichment uses the existing table and modal primitives. */
+.email-cell { display: flex; flex-direction: column; gap: 3px; overflow-wrap: anywhere; min-width: 140px; }
+.email-cell a { color: var(--accent); }
+.email-progress { border-bottom: 1px solid var(--hairline); }
+.email-progress progress { display: block; width: 100%; height: 8px; margin-top: 12px; accent-color: var(--accent); }
+.email-progress p { margin: 8px 0 0; }

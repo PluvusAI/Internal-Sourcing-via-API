@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 import { MOCK_DEFAULT_HEADERS, MOCK_SHEETS_HEADERS } from "./mockHeaders.js";
 import {
   InternalSourcingApiError,
+  type EmailJobView,
+  type EmailPreview,
   type DraftCriteria,
   type ExcludedListRef,
   type ImportMapping,
@@ -70,6 +72,10 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
   const ops = new Map<string, MockOp>();
   const deletedLists = new Set<string>();
   const removedRows = new Map<string, Map<string, MemberView>>();
+  const emailJobs = new Map<string, EmailJobView>();
+  const emailHistory = new Map<string, { listId: string; job: EmailJobView }>();
+  const emailKeys = new Map<string, { hash: string; job: EmailJobView }>();
+  const emailCache = new Map<string, string>();
   let sampleSeq = 0;
 
   const membersOf = (listId: string): MemberView[] => members.get(listId) ?? [];
@@ -255,6 +261,50 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     setMaxTargetCount(n: number) {
       maxTarget = n;
     },
+    async previewEmails(listId, scope) {
+      const l = get(listId); if (l.archivedAt) fail(409, "list_archived", "Restore this list before finding emails.");
+      if (["queued", "sourcing"].includes(statusOf(l))) fail(409, "operation_active", "Wait for the search to finish.");
+      const rows = membersOf(listId).filter(m => scope.scope === "all" || scope.memberIds.includes(m.id));
+      if (!rows.length) fail(409, "empty_scope", "Select creators or choose the whole list.");
+      if (scope.scope === "selected" && rows.length !== new Set(scope.memberIds).size) fail(400, "unknown_members", "Some creators are no longer on this list.");
+      const available = rows.filter(m => m.email).length;
+      const reusable = rows.filter(m => !m.email && m.emailLookupStatus !== "cleared" && m.platform && m.handle && emailCache.has(keyOf(m))).length;
+      const skipped = rows.filter(m => !m.email && (!m.platform || !m.handle || m.emailLookupStatus === "cleared")).length;
+      const eligible = rows.length - available - reusable - skipped;
+      return { memberIds: rows.map(m => m.id), total: rows.length, available, reusable, eligible, skipped, cachedNotFound: 0, estimatedMaxCredits: Math.min(2, eligible * 0.2), creditCap: 2, dailyRemaining: 20 } satisfies EmailPreview;
+    },
+    async startEmailJob(listId, body) {
+      const hash = JSON.stringify({ ids: [...new Set(body.memberIds)].sort(), maxCredits: body.maxCredits });
+      const k = `${listId}:${body.idempotencyKey}`; const prev = emailKeys.get(k);
+      if (prev) { if (prev.hash !== hash) fail(409, "idempotency_key_reused", "This key belongs to another selection."); return { job: prev.job, idempotentReplay: true }; }
+      const l = get(listId); if (l.archivedAt) fail(409, "list_archived", "Restore this list first.");
+      const rows = membersOf(listId).filter(m => body.memberIds.includes(m.id));
+      if (!rows.length || rows.length !== new Set(body.memberIds).size) fail(400, "unknown_members", "Choose saved creators from this list.");
+      const counts: Record<string, number> = {}; let creditsSpent = 0; const cap = Math.min(2, body.maxCredits);
+      for (const m of rows) {
+        const hadEmail = Boolean(m.email);
+        let status = "reused";
+        if (m.email) status = "reused";
+        else if (m.emailLookupStatus === "cleared" || !m.platform || !m.handle) status = "skipped";
+        else if (emailCache.has(keyOf(m))) m.email = emailCache.get(keyOf(m))!;
+        else if (creditsSpent + 0.2 > cap + 1e-9) status = "not_processed";
+        else if (m.handle.includes("missing")) status = "not_found";
+        else { m.email = `${m.handle}@example.com`; emailCache.set(keyOf(m), m.email); creditsSpent = +(creditsSpent + 0.2).toFixed(4); status = "found"; }
+        if (m.emailLookupStatus !== "cleared") { m.emailLookupStatus = m.email ? "available" : status; m.emailCheckedAt = now(); }
+        if (m.email && status !== "skipped") m.emailSource ??= hadEmail ? "provided" : "influencers_club";
+        counts[status] = (counts[status] ?? 0) + 1;
+      }
+      const job: EmailJobView = { id: id(), status: counts.not_processed ? "partial" : "completed", outcome: counts.not_processed ? "credit_ceiling" : null, counts, total: rows.length, creditsSpent, creditsHeld: creditsSpent, creditCap: cap, createdAt: now(), completedAt: now(), pollAfterSeconds: null };
+      emailJobs.set(listId, job); emailHistory.set(job.id, { listId, job }); emailKeys.set(k, { hash, job });
+      return { job, idempotentReplay: false };
+    },
+    async emailJob(listId, jobId) {
+      get(listId);
+      if (!jobId) return { job: emailJobs.get(listId) ?? null };
+      const found = emailHistory.get(jobId) ?? fail(404, "job_not_found", "No such email job.");
+      if (found.listId !== listId) fail(404, "job_not_found", "No such email job.");
+      return { job: found.job };
+    },
     async meta() {
       return {
         workspace: "mock-workspace",
@@ -358,7 +408,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     async updateCreator(listId, memberId, body) {
       const l = editable(listId);
       const member = membersOf(listId).find(m => m.id === memberId) ?? fail(404, "member_not_found", "No such creator on this list.");
-      Object.assign(member, body); l.updatedAt = now();
+      Object.assign(member, body, body.email !== undefined ? { emailLookupStatus: body.email ? "available" : "cleared", emailSource: "provided" } : {}); l.updatedAt = now();
       return { member };
     },
     async removeCreators(listId, memberIds) {

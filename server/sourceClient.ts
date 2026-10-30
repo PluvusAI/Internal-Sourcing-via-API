@@ -168,6 +168,7 @@ export interface ListDetail extends ListSummary {
   importReport: ImportReportView | null;
   operations: OperationView[];
   activeOperationId: string | null;
+  emailJob?: EmailJobView | null;
 }
 
 export interface MemberAccount {
@@ -191,6 +192,9 @@ export interface MemberView {
   pictureUrl: string | null;
   reason: string | null;
   email: string | null;
+  emailLookupStatus?: string;
+  emailSource?: string | null;
+  emailCheckedAt?: string | null;
   location: string | null;
   language: string | null;
   accounts: MemberAccount[];
@@ -257,6 +261,18 @@ export type ExportFormat = "default" | "sheets";
 export type ExportRequest = { format: ExportFormat; scope: "all" } | { format: ExportFormat; scope: "selected"; memberIds: string[] };
 export interface CreatorDetailsPatch { displayName?: string | null; email?: string | null; location?: string | null; language?: string | null }
 export interface CreatorInput extends CreatorDetailsPatch { platform?: IdentityPlatform | null; handle?: string; profileUrl?: string }
+
+
+export type EmailScope = { scope: "all" } | { scope: "selected"; memberIds: string[] };
+export interface EmailPreview {
+  memberIds: string[]; total: number; available: number; reusable: number; eligible: number;
+  skipped: number; cachedNotFound: number; estimatedMaxCredits: number; creditCap: number; dailyRemaining: number;
+}
+export interface EmailJobView {
+  id: string; status: "queued" | "running" | "completed" | "partial"; outcome: string | null;
+  counts: Record<string, number>; total: number; creditsSpent: number; creditsHeld: number; creditCap: number;
+  createdAt: string; completedAt: string | null; pollAfterSeconds: number | null;
+}
 
 export class InternalSourcingApiError extends Error {
   constructor(
@@ -397,6 +413,12 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
       const { idempotencyKey, ...body } = p;
       return call<{ operation: OperationView; idempotentReplay: boolean }>("POST", `/lists/${id(listId)}/operations`, body, { "Idempotency-Key": idempotencyKey, ...actorHeaders(actor) });
     },
+    previewEmails: (listId: string, scope: EmailScope) => call<EmailPreview>("POST", `/lists/${id(listId)}/email-jobs/preview`, scope),
+    startEmailJob: (listId: string, p: { memberIds: string[]; maxCredits: number; idempotencyKey: string }, actor?: Actor) => {
+      const { idempotencyKey, ...body } = p;
+      return call<{ job: EmailJobView; idempotentReplay: boolean }>("POST", `/lists/${id(listId)}/email-jobs`, body, { "Idempotency-Key": idempotencyKey, ...actorHeaders(actor) });
+    },
+    emailJob: (listId: string, jobId?: string) => call<{ job: EmailJobView | null }>("GET", `/lists/${id(listId)}/email-jobs${jobId ? `/${id(jobId)}` : ""}`),
     /** Reading never starts work and never spends. */
     getOperation: (listId: string, operationId: string) => call<{ operation: OperationView; memberCount: number }>("GET", `/lists/${id(listId)}/operations/${id(operationId)}`),
     /** The CSV text, the row count the source wrote, and its suggested file name. Never runs a search. */

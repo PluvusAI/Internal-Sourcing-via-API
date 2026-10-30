@@ -59,6 +59,7 @@ moved here with its history. The backend side of PLU-505 is on that repository's
   exclusion snapshot, and the honest outcome and counters (excluded / already on list / considered).
 - **Review** — table with page-vs-all selection (kept on the server, so it survives paging, refresh,
   another session and Find more), profile links, a detail drawer that returns to the same place.
+- **Find emails** — explicitly retrieve missing emails for one row, the saved selection across pages, or the whole list. Preview eligible/reusable contacts and maximum credits first. Jobs survive refresh, keep partial results at the inherited search/daily caps, preserve supplied emails/manual clears, and never replace creators whose email is unavailable.
 - **Find more** — adds N more with the same criteria and exclusions, always skipping the list's own
   rows. **New list using these criteria** — copies criteria and exclusions and adds the previous list.
 - **Export** — selected (N) or all (N), compact 20-column or exact 93-column Sheets template with the
@@ -267,3 +268,8 @@ either, that one check is skipped and says so.
 ```bash
 SOURCING_BACKEND_DIR=../pluvus-workflow-prototype npm test
 ```
+
+
+### Email enrichment rollout
+
+Find emails needs backend migration `20261112120000_internal_email_enrichment`, the backend email worker and scheduler, and the updated internal API. Deploy the migration/backend first, then rebuild/deploy this app. The provider key stays only on the sourcing backend. See `docs/email-enrichment.md` for verification and rollout.
