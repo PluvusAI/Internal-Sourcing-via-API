@@ -8,9 +8,9 @@ The fix uses the existing Pluvus banner, buttons, modal, Notice and Spinner. It 
 
 Validation used a disposable local PGlite backend with fake providers; no production lists or paid provider calls were used.
 
-- App: 56 tests, both TypeScript targets and production bundle checks passed.
+- App: 57 tests, both TypeScript targets and production bundle checks passed.
 - Backend: 33 HTTP/database journey tests passed, covering direct deletion, running-search refusal, preserved history/exclusions and archive filtering before pagination. Server TypeScript check passed.
-- Browser: `scripts/e2e-list-lifecycle.mjs` passed archive visibility, cleared filters, Undo across routes, restore after reload, deletion of new/imported/completed/archived lists, cancellation and navigation during a pending archive request. No browser errors; 390px dark layout fits.
+- Browser: `scripts/e2e-list-lifecycle.mjs` passed archive visibility, cleared filters, Undo across routes, restore after reload, deletion of new/imported/completed/archived lists, cancellation, pending search input during view switches, email-job deletion protection, failed detail navigation and delayed archive/delete responses. The sourcing editor script also passed repeatedly against the same mock server with retained archive fixtures. No browser errors; 390px dark layout fits.
 - `21st review` reported no findings in changed code. The existing inline rename input’s autofocus warning remains outside this change.
 
 Screenshots: [Desktop archive and Undo](01-archived-visible-with-undo.png), [390px dark archive](02-archive-phone-dark.png).

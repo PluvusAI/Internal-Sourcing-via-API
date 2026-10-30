@@ -50,6 +50,17 @@ try {
   await page.getByRole('button', { name: 'Archived', exact: true }).click();
   await page.getByRole('link', { name: other.name, exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get('q'), null);
+  // A keystroke still waiting on its debounce must not enter the newly opened view.
+  await page.getByRole('button', { name: 'Active lists', exact: true }).click();
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.getByPlaceholder('Search lists by brand or list name').fill('Pending unrelated search');
+  await page.getByRole('button', { name: 'Archived', exact: true }).click();
+  await page.clock.fastForward(300);
+  await page.clock.resume();
+  await page.getByRole('link', { name: other.name, exact: true }).waitFor();
+  assert.equal(new URL(page.url()).searchParams.get('q'), null);
+  assert.equal(await page.getByPlaceholder('Search lists by brand or list name').inputValue(), '');
   // Undo remains available after opening a different list page.
   await page.getByRole('button', { name: 'Active lists', exact: true }).click();
   await page.getByRole('button', { name: `Archive ${target.name}`, exact: true }).click();
@@ -87,6 +98,44 @@ try {
   await confirmDelete(archivedDelete.name); await absent(archivedDelete.id);
   assert.equal(await page.getByRole('button', { name: 'Undo archive', exact: true }).count(), 0);
   assert.equal((await api(`/lists?q=${encodeURIComponent(archivedDelete.name)}&archivedOnly=1`)).total, 0);
+  // Library summaries omit email jobs; confirmation must check the current detail.
+  const busy = await fresh('Email job protects deletion'); await page.goto(`${base}/`);
+  const busyRoute = `**/api/lists/${busy.id}`;
+  await page.route(busyRoute, async route => {
+    const response = await route.fetch(); const json = await response.json();
+    await route.fulfill({ response, json: { ...json, emailJob: { status: 'running' } } });
+  });
+  await page.getByRole('button', { name: `Delete list ${busy.name}`, exact: true }).click();
+  await page.getByText('Wait for the current search or email lookup to finish before deleting this list.', { exact: true }).waitFor();
+  assert.ok(await page.getByRole('dialog').getByRole('button', { name: 'Delete list', exact: true }).isDisabled());
+  await page.getByRole('dialog').getByRole('button', { name: 'Keep list', exact: true }).click();
+  await page.unroute(busyRoute); assert.equal((await api(`/lists/${busy.id}`)).id, busy.id);
+  // A missing detail keeps its originating archived search and page on the error link.
+  const failedRoute = `**/api/lists/${busy.id}`;
+  await page.route(failedRoute, route => route.fulfill({ status: 404, json: { error: { code: 'list_not_found', message: 'Test list unavailable.' } } }));
+  const from = '/?archived=1&q=Saved+brand&page=2';
+  await page.goto(`${base}/lists/${busy.id}?from=${encodeURIComponent(from)}`);
+  await page.getByText('List not found', { exact: true }).waitFor();
+  assert.equal(await page.getByRole('link', { name: 'Archived lists', exact: true }).getAttribute('href'), from);
+  await page.unroute(failedRoute);
+  // Deletion can finish before an already-successful archive response reaches the browser.
+  const late = await fresh('Delayed archive after delete'); await page.goto(`${base}/`);
+  let releaseResponse;
+  const captured = new Promise(resolve => {
+    page.route(`**/api/lists/${late.id}/archive`, async route => {
+      const response = await route.fetch();
+      await new Promise(release => { releaseResponse = release; resolve(); });
+      await route.fulfill({ response });
+    }, { times: 1 });
+  });
+  await page.getByRole('button', { name: `Archive ${late.name}`, exact: true }).click(); await captured;
+  await confirmDelete(late.name); await absent(late.id);
+  const delivered = page.waitForResponse(r => r.url().endsWith(`/lists/${late.id}/archive`));
+  const refresh = page.waitForRequest(r => new URL(r.url()).pathname === '/api/lists' && r.method() === 'GET');
+  releaseResponse(); await delivered; await (await refresh).response();
+  await page.locator('.library-card[aria-busy="false"]').waitFor();
+  assert.equal(await page.getByRole('link', { name: late.name, exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Undo archive', exact: true }).count(), 0);
   // Pending archive reads and writes stay consistent if the user changes views mid-request.
   const pending = await fresh('Pending archive'); await page.goto(`${base}/`);
   let release; const intercepted = new Promise(resolve => { page.route(`**/api/lists/${pending.id}/archive`, async route => { await new Promise(r => { release = r; resolve(); }); await route.continue(); }, { times: 1 }); });
@@ -97,6 +146,6 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), 'phone layout fits');
   await screenshot('02-archive-phone-dark');
   assert.deepEqual(errors, []);
-  console.log('PASS: archived visibility, cleared filters, cross-route Undo, restore after reload, new/imported/completed/archived deletion, cancel, and pending-view race.');
+  console.log('PASS: archived visibility, cleared filters, cross-route Undo, restore after reload, new/imported/completed/archived deletion, cancel, pending input, email-job protection, failed-load navigation, and archive/delete/view races.');
 } catch (err) { await screenshot('failure').catch(() => {}); throw err; }
 finally { await browser.close(); }

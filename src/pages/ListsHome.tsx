@@ -29,7 +29,7 @@ export function ListsHome() {
   useEffect(() => {
     typed.current = false;
     setQ(urlQ);
-  }, [urlQ]);
+  }, [urlQ, showArchived]);
   useEffect(() => {
     if (typed.current && debounced.trim() !== urlQ) {
       typed.current = false;
@@ -39,6 +39,12 @@ export function ListsHome() {
   const type = (v: string): void => {
     typed.current = true;
     setQ(v);
+  };
+
+  const openLibrary = (archived: boolean): void => {
+    typed.current = false;
+    setQ("");
+    setParams({ archived: archived ? "1" : null, q: null, page: null }, { push: true });
   };
 
   const lists = useQuery({
@@ -80,10 +86,10 @@ export function ListsHome() {
       </div>
 
       <nav className="library-nav" aria-label="List library">
-        <button type="button" aria-current={!showArchived ? "page" : undefined} onClick={() => setParams({ archived: null, q: null, page: null }, { push: true })}>
+        <button type="button" aria-current={!showArchived ? "page" : undefined} onClick={() => openLibrary(false)}>
           <ClipboardList size={16} aria-hidden /> Active lists
         </button>
-        <button type="button" aria-current={showArchived ? "page" : undefined} onClick={() => setParams({ archived: "1", q: null, page: null }, { push: true })}>
+        <button type="button" aria-current={showArchived ? "page" : undefined} onClick={() => openLibrary(true)}>
           <Archive size={16} aria-hidden /> Archived
         </button>
       </nav>
@@ -127,7 +133,7 @@ export function ListsHome() {
               <Archive size={28} aria-hidden />
               <strong>No archived lists</strong>
               <span>Lists you archive appear here. You can restore them at any time.</span>
-              <button type="button" className="btn" onClick={() => setParams({ archived: null, q: null, page: null }, { push: true })}>Back to active lists</button>
+              <button type="button" className="btn" onClick={() => openLibrary(false)}>Back to active lists</button>
             </div>
           ) : (
             <div className="empty empty-state">

@@ -193,7 +193,8 @@ export function libraryHref(from: string | null, fallback = "/"): string {
 }
 
 /** When a list changes library views, Back must show its destination without the old filters. */
-export function listReturnHref(from: string | null, archived: boolean): string {
+export function listReturnHref(from: string | null, archived: boolean | undefined): string {
+  if (archived === undefined) return libraryHref(from);
   const url = new URL(libraryHref(from, archived ? "/?archived=1" : "/"), "http://local");
   if ((url.searchParams.get("archived") === "1") !== archived) {
     url.searchParams.delete("q");

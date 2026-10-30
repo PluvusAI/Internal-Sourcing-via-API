@@ -37,7 +37,7 @@ try {
   await page.getByRole('button',{name:'Archived',exact:true}).click();
   releaseArchive();
   await page.getByRole('button',{name:`Restore ${list.name}`,exact:true}).waitFor();
-  assert.equal(await page.locator('.lists-table tbody tr').count(),1);
+  assert.equal(await page.getByRole('link',{name:list.name,exact:true}).count(),1);
   await shot('after-library-archive');
   await page.getByRole('link',{name:list.name,exact:true}).click();
   await page.getByText('This list is archived',{exact:true}).waitFor();
@@ -48,9 +48,10 @@ try {
   await page.getByText('This list is archived',{exact:true}).waitFor({state:'detached'});
   await page.getByRole('link',{name:'All lists',exact:true}).click();
   await page.getByRole('button',{name:'Archived',exact:true}).click();
-  await page.getByText('No archived lists',{exact:true}).waitFor();
   assert.equal(new URL(page.url()).searchParams.get('q'),null);
   assert.equal(new URL(page.url()).searchParams.get('archived'),'1');
+  await page.getByPlaceholder('Search lists by brand or list name').fill(list.name);
+  await page.getByText('No matching archived lists',{exact:true}).waitFor();
   await page.getByRole('button',{name:'Active lists',exact:true}).click();
   await page.getByRole('link',{name:list.name,exact:true}).waitFor();
   await page.getByRole('button',{name:`Archive ${list.name}`,exact:true}).click();

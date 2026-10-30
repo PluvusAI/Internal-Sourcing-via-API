@@ -28,7 +28,7 @@ export function ListPage({ id }: { id: string }) {
     refetchInterval: (q) => emailJobActive(q.state.data?.emailJob) ? 3000 : pollMs(q.state.data?.operations.find((o) => o.id === q.state.data?.activeOperationId) ?? null),
   });
 
-  const returnHref = listReturnHref(params.get("from"), Boolean(list.data?.archivedAt));
+  const returnHref = listReturnHref(params.get("from"), list.data ? Boolean(list.data.archivedAt) : undefined);
   const back = (
     <a href={returnHref} className="btn btn-ghost btn-sm" onClick={linkHandler(returnHref)} style={{ marginBottom: 12 }}>
       <ArrowLeft size={14} aria-hidden /> {returnHref.includes("archived=1") ? "Archived lists" : "All lists"}

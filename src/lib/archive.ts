@@ -4,6 +4,19 @@ import { api } from "../api";
 
 export const ARCHIVE_FEEDBACK_KEY = ["archive-feedback"] as const;
 export interface ArchiveFeedbackState { id: string; name: string; archived: boolean }
+const deletedLists = new WeakMap<QueryClient, Set<string>>();
+export function recordListDeletion(qc: QueryClient, listId: string): void {
+  const ids = deletedLists.get(qc) ?? new Set<string>();
+  ids.add(listId);
+  deletedLists.set(qc, ids);
+  clearArchiveFeedback(qc, listId);
+}
+/** A delayed archive response cannot resurrect the Undo or detail cache of a deleted list. */
+export function publishArchiveFeedback(qc: QueryClient, value: ArchiveFeedbackState): boolean {
+  if (deletedLists.get(qc)?.has(value.id)) return false;
+  qc.setQueryData<ArchiveFeedbackState>(ARCHIVE_FEEDBACK_KEY, value);
+  return true;
+}
 export function clearArchiveFeedback(qc: QueryClient, listId: string): void {
   if (qc.getQueryData<ArchiveFeedbackState | null>(ARCHIVE_FEEDBACK_KEY)?.id === listId) qc.setQueryData(ARCHIVE_FEEDBACK_KEY, null);
 }
@@ -14,11 +27,10 @@ export function useArchiveList() {
   return useMutation({
     mutationFn: ({ id, archived }: { id: string; archived: boolean }) => api.archiveList(id, archived),
     onSuccess: async (list) => {
-      qc.setQueryData<ArchiveFeedbackState>(ARCHIVE_FEEDBACK_KEY, { id: list.id, name: list.name, archived: Boolean(list.archivedAt) });
       // Discard reads started before this write, including reads from a just-opened archive view.
       await qc.cancelQueries({ queryKey: ["lists"] });
       await qc.cancelQueries({ queryKey: ["list", list.id] });
-      qc.setQueryData(["list", list.id], list);
+      if (publishArchiveFeedback(qc, { id: list.id, name: list.name, archived: Boolean(list.archivedAt) })) qc.setQueryData(["list", list.id], list);
       // The write is complete. A slow library refresh must not keep Undo unavailable.
       void Promise.all([
         qc.invalidateQueries({ queryKey: ["lists"] }),
