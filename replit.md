@@ -23,6 +23,7 @@ For live use, configure:
 - `INTERNAL_APP_ALLOWED_USER_IDS`: approved individual Clerk users. Access is
   user-only; organization settings are ignored and never grant access.
 - `CLERK_AUTHORIZED_PARTIES`: this app's HTTPS origin(s), required in production.
+- Optional `OPENROUTER_API_KEY` enables the criteria assistant in this app's server. Restart after adding it. `OPENROUTER_MODEL` defaults to `openai/gpt-4.1-mini`; never expose the key as `VITE_*`.
 
 Add credentials through Secrets, never source files. Restart the workflow after
 configuration changes; the publishable key also requires rebuilding for production.

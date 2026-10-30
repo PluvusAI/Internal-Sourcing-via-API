@@ -269,3 +269,54 @@ test("mock mode works end to end in development and is labelled", async () => {
   const found = (await (await fetch(`${base}/api/lists?q=brand%20a`)).json()) as { total: number };
   assert.equal(found.total, 1);
 });
+
+test("missing AI configuration leaves normal app access available and explains how to enable suggestions", async () => {
+  const fake = fakeSource();
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  const status = await fetch(`${base}/api/criteria/suggest/status`, { headers: authed("no-org") });
+  const info = await status.json() as { available: boolean; message: string };
+  assert.equal(info.available, false);
+  assert.match(info.message, /OPENROUTER_API_KEY/);
+  assert.equal((await fetch(`${base}/api/meta`, { headers: authed("no-org") })).status, 200);
+  const result = await fetch(`${base}/api/criteria/suggest`, { method: "POST", headers: authed("no-org"), body: JSON.stringify({ brief: "Educational skincare creators for sensitive skin", platforms: ["instagram"] }) });
+  assert.equal(result.status, 503);
+  assert.equal(((await result.json()) as { error: { code: string } }).error.code, "ai_not_configured");
+  assert.equal(fake.calls.filter(c => c.url.endsWith("/criteria/suggest")).length, 0);
+});
+
+test("AI suggestions use the app's server-held OpenRouter key and never create or source a list", async () => {
+  const fake = fakeSource();
+  const aiKey = "fake-openrouter-key-kept-on-server";
+  let calls = 0;
+  const base = await serve(createApp(loadConfig({ ...liveEnv, OPENROUTER_API_KEY: aiKey }), { source: fake.client, verify: allowVerify, aiFetch: (async (_url, init) => {
+    calls++;
+    assert.equal((init?.headers as Record<string, string>).Authorization, `Bearer ${aiKey}`);
+    return new Response(JSON.stringify({ choices: [{ finish_reason: "stop", message: { content: JSON.stringify({ niche: "skincare routines", idealCreator: "Educational creators who demonstrate sensitive skin routines.", topicKeywords: ["skincare"], exclusions: [], creatorLocations: [], profileLanguages: [], followerRanges: [] }) } }] }), { status: 200 });
+  }) as typeof fetch }));
+  const payload = JSON.stringify({ brief: "Educational skincare creators for sensitive skin", platforms: ["instagram"] });
+  assert.equal((await fetch(`${base}/api/criteria/suggest`, { method: "POST", headers: authed("forged"), body: payload })).status, 401);
+  const result = await fetch(`${base}/api/criteria/suggest`, { method: "POST", headers: authed("no-org"), body: payload });
+  assert.equal(result.status, 200);
+  assert.equal(((await result.json()) as { suggestion: { niche: string } }).suggestion.niche, "skincare routines");
+  assert.equal(calls, 1);
+  assert.equal(fake.calls.length, 0);
+  const status = await (await fetch(`${base}/api/criteria/suggest/status`, { headers: authed("no-org") })).text();
+  assert.ok(!status.includes(aiKey));
+});
+
+test("creator editing routes preserve exact list/member scope and write attribution", async () => {
+  const fake = fakeSource();
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  const listId = "list1234abcd";
+  const memberId = "member1234abcd";
+  await fetch(`${base}/api/lists/${listId}/members`, { method: "POST", headers: authed("no-org"), body: JSON.stringify({ platform: "instagram", handle: "creator" }) });
+  await fetch(`${base}/api/lists/${listId}/members/${memberId}`, { method: "PATCH", headers: authed("no-org"), body: JSON.stringify({ displayName: "Edited" }) });
+  await fetch(`${base}/api/lists/${listId}/members`, { method: "DELETE", headers: authed("no-org"), body: JSON.stringify({ memberIds: [memberId] }) });
+  await fetch(`${base}/api/lists/${listId}`, { method: "DELETE", headers: authed("no-org") });
+  assert.deepEqual(fake.calls.map(c => c.method), ["POST", "PATCH", "DELETE", "DELETE"]);
+  assert.ok(fake.calls.every(c => c.headers["x-internal-user"] === "user_ricky"));
+  assert.deepEqual(JSON.parse(fake.calls[2]!.body!), { memberIds: [memberId] });
+  const invalid = await fetch(`${base}/api/lists/${listId}/members`, { method: "DELETE", headers: authed("no-org"), body: JSON.stringify({ memberIds: [] }) });
+  assert.equal(invalid.status, 400);
+  assert.equal(fake.calls.length, 4, "an empty removal scope never becomes all creators");
+});

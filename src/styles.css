@@ -108,6 +108,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .link-btn:disabled { opacity: .55; cursor: not-allowed; }
 
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.assistant-card { border: 1px solid var(--hairline); border-radius: 10px; padding: 14px; background: var(--accentWash); }
+.identity-method { border: 0; padding: 0; margin: 0; min-width: 0; }
+.identity-method legend { margin-bottom: 8px; }
+.creator-edit-hint { padding: 10px 16px; border-bottom: 1px solid var(--hairline); }
 .field > label, .field-label { font-weight: 600; font-size: 13px; }
 .field .hint { color: var(--textMuted); font-size: 12px; }
 .field .error, .error-text { color: var(--danger); font-size: 12px; font-weight: 600; }

@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 
 // The built UI (default), or another directory given as the first argument (used by its test).
 const DIST = process.argv[2] ?? fileURLToPath(new URL("../dist/", import.meta.url));
-const SECRET_VARS = ["SOURCING_INTERNAL_APP_API_KEY", "CLERK_SECRET_KEY", "CLERK_JWT_KEY", "DATABASE_URL", "INFLUENCERS_CLUB_API_KEY", "SOURCING_SERVICE_API_KEY", "OPERATOR_API_KEY"];
+const SECRET_VARS = ["SOURCING_INTERNAL_APP_API_KEY", "CLERK_SECRET_KEY", "CLERK_JWT_KEY", "DATABASE_URL", "INFLUENCERS_CLUB_API_KEY", "OPENROUTER_API_KEY", "SOURCING_SERVICE_API_KEY", "OPERATOR_API_KEY"];
 const PATTERNS = [
   [/sk_(live|test)_[A-Za-z0-9]{10,}/, "a Clerk secret key"],
   [/SOURCING_INTERNAL_APP_API_KEY/, "the source credential's variable name"],

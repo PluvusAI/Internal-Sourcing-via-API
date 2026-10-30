@@ -68,6 +68,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
   const lists = new Map<string, MockList>();
   const members = new Map<string, MemberView[]>();
   const ops = new Map<string, MockOp>();
+  const deletedLists = new Set<string>();
+  const removedRows = new Map<string, Map<string, MemberView>>();
   let sampleSeq = 0;
 
   const membersOf = (listId: string): MemberView[] => members.get(listId) ?? [];
@@ -111,10 +113,16 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       activeOperationId: operations.find((o) => o.status === "queued" || o.status === "running")?.id ?? null,
     };
   };
-  const get = (listId: string): MockList => lists.get(listId) ?? fail(404, "list_not_found", "No such list.");
+  const get = (listId: string): MockList => (!deletedLists.has(listId) ? lists.get(listId) : null) ?? fail(404, "list_not_found", "No such list.");
+  const editable = (listId: string): MockList => {
+    const l = get(listId);
+    if (["queued", "sourcing"].includes(statusOf(l))) fail(409, "operation_active", "Wait for the search to finish before editing creators.");
+    if (l.archivedAt) fail(409, "list_archived", "Restore this list before editing creators.");
+    return l;
+  };
   const matches = (l: MockList, q: string | undefined, eligible: boolean | undefined, includeArchived: boolean | undefined): boolean =>
     (!q || l.name.toLowerCase().includes(q.trim().toLowerCase())) && (includeArchived || l.archivedAt === null) && (!eligible || summary(l).eligibleForExclusion);
-  const sorted = (): MockList[] => [...lists.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+  const sorted = (): MockList[] => [...lists.values()].filter(l => !deletedLists.has(l.id)).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
 
   /** One status read moves a running mock search on by up to two sample creators. */
   function advance(op: MockOp): void {
@@ -311,6 +319,59 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       l.archivedAt = archived ? now() : null;
       return detail(l);
     },
+    async removeList(listId) {
+      const l = get(listId);
+      if (["queued", "sourcing"].includes(statusOf(l))) fail(409, "operation_active", "Wait for the search to finish.");
+      if (statusOf(l) !== "draft" && !l.archivedAt) fail(409, "archive_required", "Archive this list before removing it.");
+      deletedLists.add(listId); l.archivedAt ??= now();
+      return { removed: true };
+    },
+    async addCreator(listId, body) {
+      const l = editable(listId);
+      let platform = body.platform ?? "";
+      let handle = (body.handle ?? "").replace(/^@/, "").trim().toLowerCase();
+      let profileUrl = body.profileUrl?.trim() || null;
+      if (profileUrl) {
+        try {
+          const url = new URL(profileUrl);
+          if (!["https:", "http:"].includes(url.protocol)) throw new Error();
+          const host = url.hostname.replace(/^www\./, "");
+          const site = host.endsWith("instagram.com") ? "instagram" : host.endsWith("tiktok.com") ? "tiktok" : host.endsWith("youtube.com") ? "youtube" : host.endsWith("twitch.tv") ? "twitch" : ["x.com", "twitter.com"].includes(host) ? "twitter" : "";
+          if (!site) throw new Error();
+          if (platform && platform !== site) fail(422, "invalid_creator", "The profile URL and platform do not match.");
+          platform = site;
+          handle ||= url.pathname.split("/").filter(Boolean)[0]?.replace(/^@/, "").toLowerCase() ?? "";
+        } catch { fail(422, "invalid_creator", "Use a creator profile URL from a supported platform."); }
+      }
+      if (!platform || !handle) fail(422, "invalid_creator", "Provide a profile URL or platform and handle.");
+      const current = membersOf(listId).find(m => keyOf(m) === `${platform}:${handle}`);
+      if (current) return { member: current, existing: true, restored: false };
+      const removed = [...(removedRows.get(listId)?.values() ?? [])].find(m => keyOf(m) === `${platform}:${handle}`);
+      if (removed) {
+        removedRows.get(listId)!.delete(removed.id); members.set(listId, [...membersOf(listId), removed]);
+        return { member: removed, existing: false, restored: true };
+      }
+      const member: MemberView = { id: id(), source: "import", operationId: null, platform, handle, profileUrl, displayName: body.displayName ?? null, followers: null, engagementPercent: null, pictureUrl: null, reason: null, email: body.email ?? null, location: body.location ?? null, language: body.language ?? null, accounts: [{ platform, handle, link: profileUrl, followers: null, engagementPercent: null }], selected: false, importRow: null, createdAt: now() };
+      members.set(listId, [...membersOf(listId), member]); l.updatedAt = now();
+      return { member, existing: false, restored: false };
+    },
+    async updateCreator(listId, memberId, body) {
+      const l = editable(listId);
+      const member = membersOf(listId).find(m => m.id === memberId) ?? fail(404, "member_not_found", "No such creator on this list.");
+      Object.assign(member, body); l.updatedAt = now();
+      return { member };
+    },
+    async removeCreators(listId, memberIds) {
+      const l = editable(listId);
+      const all = membersOf(listId);
+      const ids = new Set(memberIds);
+      const removed = removedRows.get(listId) ?? new Map<string, MemberView>();
+      if ([...ids].some(id => !all.some(m => m.id === id) && !removed.has(id))) fail(400, "unknown_members", "Some creators are not on this list.");
+      const rows = all.filter(m => ids.has(m.id));
+      for (const row of rows) removed.set(row.id, { ...row, selected: false });
+      removedRows.set(listId, removed); members.set(listId, all.filter(m => !ids.has(m.id))); l.updatedAt = now();
+      return { removedCount: rows.length };
+    },
     async members(listId, p = {}) {
       get(listId);
       const page = p.page ?? 1;
@@ -345,6 +406,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       if (targetCount > maxTarget) fail(422, "target_exceeds_limit", `At most ${maxTarget} new creators can be requested at a time.`, { maxTargetQualified: maxTarget });
       const excluded = new Set<string>();
       for (const x of [...l.excludedListIds, l.id]) for (const m of membersOf(x)) excluded.add(keyOf(m));
+      for (const m of removedRows.get(l.id)?.values() ?? []) excluded.add(keyOf(m));
       const view: OperationView = {
         id: id(),
         kind: p.kind,
