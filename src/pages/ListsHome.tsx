@@ -46,14 +46,17 @@ export function ListsHome() {
     placeholderData: keepPreviousData,
     refetchInterval: (query) => (query.state.data?.lists.some((l) => l.status === "queued" || l.status === "sourcing") ? 5000 : false),
   });
-  useScrollRestoration(Boolean(lists.data), href);
+  const resultsSettling = (typed.current && q.trim() !== urlQ) || lists.isPlaceholderData;
+  useScrollRestoration(Boolean(lists.data) && !resultsSettling, href);
 
   const archive = useMutation({
     mutationFn: (v: { id: string; archived: boolean }) => api.archiveList(v.id, v.archived),
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["lists"] }),
   });
 
-  const data = lists.data;
+  // Search, page and archive filters share a query observer. Keep-previous-data must not leave
+  // old rows actionable under a new URL while the matching result is still loading.
+  const data = resultsSettling ? undefined : lists.data;
   return (
     <>
       <div className="page-head">
@@ -91,9 +94,9 @@ export function ListsHome() {
           </label>
         </div>
 
-        {lists.isLoading ? (
+        {lists.isLoading || resultsSettling ? (
           <div className="empty">
-            <Spinner label="Loading lists" />
+            <Spinner label={typed.current && q.trim() !== urlQ ? "Searching lists" : "Loading lists"} />
           </div>
         ) : lists.isError ? (
           <div className="card-pad">

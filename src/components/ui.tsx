@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, Info, Loader2, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Info, Loader2, X } from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode, type SelectHTMLAttributes } from "react";
 import type { ListStatus } from "../../server/sourceClient";
 import { STATUS_LABELS, STATUS_TONE } from "../lib/format";
 
@@ -59,9 +59,28 @@ export function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
+/** Native picker and chevron layout adapted from 21st.dev/@wensity/components/native-select. */
+export function NativeSelect({ className = "", ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  return (
+    <span className="native-select">
+      <select className={`select ${className}`} {...props} />
+      <ChevronDown size={16} aria-hidden />
+    </span>
+  );
+}
+
+export function useIsMounted() {
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  return mounted;
+}
+
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-function useFocusTrap(onClose: () => void) {
+function useFocusTrap(onClose: () => void, closeDisabled = false) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
@@ -78,7 +97,7 @@ function useFocusTrap(onClose: () => void) {
     if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      if (!closeDisabled) onClose();
       return;
     }
     if (e.key !== "Tab" || !ref.current) return;
@@ -97,15 +116,15 @@ function useFocusTrap(onClose: () => void) {
   return { ref, onKeyDown };
 }
 
-export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
+export function Modal({ title, onClose, children, footer, wide, closeDisabled = false }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; wide?: boolean; closeDisabled?: boolean }) {
   const titleId = useId();
-  const trap = useFocusTrap(onClose);
+  const trap = useFocusTrap(onClose, closeDisabled);
   return (
-    <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="backdrop" onMouseDown={(e) => e.target === e.currentTarget && !closeDisabled && onClose()}>
       <div className={`dialog ${wide ? "dialog-wide" : ""}`} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={trap.ref} onKeyDown={trap.onKeyDown}>
         <div className="dialog-head">
           <h2 id={titleId}>{title}</h2>
-          <button type="button" className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="btn btn-ghost icon-btn" onClick={onClose} aria-label="Close" disabled={closeDisabled}>
             <X size={18} />
           </button>
         </div>

@@ -7,14 +7,14 @@ import { CriteriaFormFields } from "../components/CriteriaForm";
 import { ExportDialog, FindMoreDialog, NewListDialog } from "../components/Dialogs";
 import { ExclusionPicker } from "../components/ExclusionPicker";
 import { MembersTable } from "../components/MembersTable";
-import { Notice, Spinner, StatusBadge, errorText, useDebounced } from "../components/ui";
+import { Modal, Notice, Spinner, StatusBadge, errorText } from "../components/ui";
 import { applyPending, applySuggestion, criteriaSummary, draftFromForm, formFromDraft, formProblems, type CriteriaForm, type PendingSuggestion } from "../lib/criteria";
 import { count, isActive, pollMs, progressText, when } from "../lib/format";
 import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
-import { linkHandler } from "../router";
+import { linkHandler, parseRoute, registerNavigationBlocker, type NavigationAttempt } from "../router";
 
 export function ListPage({ id }: { id: string }) {
   const meta = useMeta();
@@ -69,47 +69,89 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   // ── autosave: one save at a time, always of the latest edits, fenced by the draft revision
   const payload = useMemo(() => ({ name: name.trim(), criteria: draftFromForm(form), targetCount: target, excludedListIds: selectedIds(selection) }), [name, form, target, selection]);
   const payloadKey = JSON.stringify(payload);
-  const savedKey = useRef(payloadKey);
+  const savedKey = useRef<string | null>(payloadKey);
   const latestKey = useRef(payloadKey);
   const inFlight = useRef(false);
+  const failedKey = useRef<string | null>(null);
+  const conflicted = useRef(false);
   latestKey.current = payloadKey;
   useEffect(() => {
-    if (payloadKey !== savedKey.current && save !== "conflict") setSave((s) => (s === "saving" ? s : "dirty"));
-  }, [payloadKey, save]);
-  const debouncedKey = useDebounced(payloadKey, 700);
+    // A failed payload stays failed even if the user briefly edits another field and returns to
+    // it before the debounce expires. A known saved payload can return to Saved immediately.
+    if (conflicted.current || inFlight.current) return;
+    if (payloadKey === savedKey.current) setSave("saved");
+    else if (payloadKey === failedKey.current) setSave("failed");
+    else setSave("dirty");
+  }, [payloadKey]);
 
   const flush = useCallback(async (): Promise<void> => {
-    if (inFlight.current) return;
+    if (inFlight.current || conflicted.current) return;
     const key = latestKey.current;
-    if (key === savedKey.current) return;
+    if (key === savedKey.current) {
+      setSave((s) => s === "conflict" ? s : "saved");
+      return;
+    }
     const body = JSON.parse(key) as typeof payload;
     if (!body.name) return;
     inFlight.current = true;
     setSave("saving");
+    let succeeded = false;
     try {
       const saved = await api.updateList(list.id, { ...body, baseRevision: revision.current });
       revision.current = saved.draftRevision;
       savedKey.current = key;
+      failedKey.current = null;
       qc.setQueryData(["list", list.id], saved);
       setSave(latestKey.current === key ? "saved" : "dirty");
+      succeeded = true;
     } catch (err) {
-      setSave(err instanceof ApiError && (err.code === "draft_changed" || err.code === "criteria_locked") ? "conflict" : "failed");
+      const conflict = err instanceof ApiError && (err.code === "draft_changed" || err.code === "criteria_locked");
+      // A lost response can follow a committed write. Even if the user reverted the field while
+      // it was pending, retry must reconcile that value with the server before calling it saved.
+      if (conflict) conflicted.current = true;
+      else {
+        savedKey.current = null;
+        failedKey.current = key;
+      }
+      setSave(conflict ? "conflict" : "failed");
     } finally {
       inFlight.current = false;
     }
-    if (latestKey.current !== savedKey.current) void flush();
+    // Drain edits queued during a successful save. A failed or conflicted save must wait for
+    // an explicit retry or a later edit, rather than immediately repeating the same request.
+    if (succeeded && latestKey.current !== savedKey.current) void flush();
   }, [list.id, qc]);
   useEffect(() => {
-    if (save !== "conflict") void flush();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [debouncedKey]);
+    // Schedule from each edit, even when the value returns to an earlier value before the delay.
+    // The failed payload remains for an explicit Retry, while a different payload may autosave.
+    const timer = window.setTimeout(() => {
+      if (payloadKey !== failedKey.current && !conflicted.current) void flush();
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [payloadKey, flush]);
   useEffect(() => {
     const warn = (e: BeforeUnloadEvent): void => {
-      if (latestKey.current !== savedKey.current) e.preventDefault();
+      if (inFlight.current || latestKey.current !== savedKey.current) e.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, []);
+  const [leaveAttempt, setLeaveAttempt] = useState<NavigationAttempt | null>(null);
+  useEffect(() => registerNavigationBlocker((attempt) => {
+    const next = parseRoute(new URL(attempt.href, window.location.origin).pathname);
+    if (next.name === "list" && next.id === list.id) return true;
+    if (!inFlight.current && latestKey.current === savedKey.current) return true;
+    setLeaveAttempt(attempt);
+    void flush();
+    return false;
+  }), [flush, list.id]);
+  useEffect(() => {
+    // A navigation requested while autosave was pending can continue once every edit is saved.
+    if (leaveAttempt && save === "saved" && latestKey.current === savedKey.current) {
+      setLeaveAttempt(null);
+      leaveAttempt.proceed();
+    }
+  }, [leaveAttempt, save]);
 
   // ── suggestions: fill empty fields only; anything else is offered, never applied silently
   const [brief, setBrief] = useState("");
@@ -264,11 +306,34 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
               >
                 {start.isPending ? <Spinner label="Starting" /> : <Search size={16} aria-hidden />} Find creators
               </button>
-              {save !== "saved" ? <span className="muted small">Waiting for the draft to save…</span> : null}
+              {save === "dirty" || save === "saving" ? <span className="muted small">Waiting for the draft to save…</span> : null}
             </div>
           </div>
         </div>
       </div>
+      {leaveAttempt ? (
+        <Modal
+          title="Leave this draft?"
+          onClose={() => setLeaveAttempt(null)}
+          footer={
+            <>
+              <button type="button" className="btn" onClick={() => setLeaveAttempt(null)}>Stay on draft</button>
+              {save === "failed" ? <button type="button" className="btn" onClick={() => void flush()}>Retry save</button> : null}
+              <button type="button" className="btn btn-danger" onClick={() => { const attempt = leaveAttempt; setLeaveAttempt(null); attempt.proceed(); }}>Leave without saving</button>
+            </>
+          }
+        >
+          {save === "failed" ? (
+            <Notice tone="danger">Your latest changes could not be saved. Retry the save or stay on this draft to fix them.</Notice>
+          ) : save === "conflict" ? (
+            <Notice tone="warning">This draft changed somewhere else. Reload it to review the saved version, or leave without these edits.</Notice>
+          ) : !name.trim() ? (
+            <Notice tone="warning">Add a list name before these changes can be saved.</Notice>
+          ) : (
+            <p className="muted">Saving your latest changes. This page will close as soon as they are saved.</p>
+          )}
+        </Modal>
+      ) : null}
     </>
   );
 }
@@ -381,7 +446,7 @@ function RenameTitle({ list }: { list: ListDetail }) {
     return (
       <div className="inline" style={{ gap: 8 }}>
         <h1 style={{ overflowWrap: "anywhere" }}>{list.name}</h1>
-        <button type="button" className="btn btn-ghost icon-btn" aria-label="Rename list" onClick={() => setEditing(true)}>
+        <button type="button" className="btn btn-ghost icon-btn" aria-label="Rename list" onClick={() => { setValue(list.name); setEditing(true); }}>
           <Pencil size={14} />
         </button>
       </div>

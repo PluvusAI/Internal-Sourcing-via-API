@@ -18,6 +18,7 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<string | null>(null);
   const debounced = useDebounced(q.trim(), 250);
+  const searchSettling = q.trim() !== debounced;
   const searchId = useId();
   useEffect(() => setPage(1), [debounced]);
 
@@ -41,20 +42,23 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
   // Only a count for exactly the current selection is shown; a late answer for an older one is not.
   const unique = ids.length === 0 ? 0 : union.data && debouncedKey === sortedKey && !union.isPlaceholderData ? union.data.uniqueCreatorCount : null;
 
-  const matchIds = (matching.data?.lists ?? []).filter((l) => l.id !== selfId).map((l) => l.id);
+  const matchIds = (searchSettling ? [] : matching.data?.lists ?? []).filter((l) => l.id !== selfId).map((l) => l.id);
   const state = matchState(selection, matchIds);
   const headerBox = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (headerBox.current) headerBox.current.indeterminate = state === "some";
   }, [state]);
 
-  const rows = (results.data?.lists ?? []).filter((l) => l.id !== selfId);
+  // React Query can supply the previous query/page while the next one loads. Those rows must
+  // not remain clickable beneath a new search term or page number.
+  const resultsSettling = searchSettling || results.isPlaceholderData;
+  const rows = (resultsSettling ? [] : results.data?.lists ?? []).filter((l) => l.id !== selfId);
   const total = matchIds.length;
   const wholeWorkspace = debounced === "";
   const tooMany = matching.error instanceof ApiError && matching.error.code === "too_many_matches";
 
   const selectAllMatching = (): void => {
-    if (!matching.data) return;
+    if (searchSettling || !matching.data) return;
     onChange(addAll(selection, matching.data.lists.filter((l) => l.id !== selfId)));
   };
   const clearMatching = (): void => onChange(removeAll(selection, matchIds));
@@ -78,25 +82,27 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
                 className="checkbox"
                 aria-label={state === "all" ? `Clear all ${total} matching lists` : `Select all ${total} matching lists`}
                 checked={state === "all"}
-                disabled={total === 0 || !matching.data}
+                disabled={searchSettling || total === 0 || !matching.data}
                 onChange={() => (state === "all" ? clearMatching() : selectAllMatching())}
               />
               <span className="muted small" aria-live="polite">
-                {matching.isLoading ? "Counting matching lists…" : tooMany ? "Too many lists match to select at once — narrow the search." : `${total} matching ${total === 1 ? "list" : "lists"}${wholeWorkspace ? " in the whole workspace" : ""}`}
+                {searchSettling ? "Searching matching lists…" : matching.isLoading ? "Counting matching lists…" : tooMany ? "Too many lists match to select at once — narrow the search." : `${total} matching ${total === 1 ? "list" : "lists"}${wholeWorkspace ? " in the whole workspace" : ""}`}
               </span>
-              {total > 0 && matching.data && state !== "all" ? (
+              {!searchSettling && total > 0 && matching.data && state !== "all" ? (
                 <button type="button" className="link-btn" onClick={selectAllMatching}>
                   {wholeWorkspace ? `Select all ${total} lists in the workspace` : `Select all ${total} matching lists`}
                 </button>
               ) : null}
-              {state !== "none" ? (
+              {!searchSettling && state !== "none" ? (
                 <button type="button" className="link-btn" onClick={clearMatching}>
                   Clear {state === "all" ? "these" : "selected matching"} lists
                 </button>
               ) : null}
               {results.isFetching ? <Spinner label="Searching" /> : null}
             </div>
-            {results.isError ? (
+            {resultsSettling ? (
+              <div className="picker-row"><Spinner label="Loading matching lists" /></div>
+            ) : results.isError ? (
               <div className="picker-row">
                 <span className="error-text">Could not load lists: {results.error.message}</span>
               </div>
@@ -130,13 +136,14 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
                 );
               })
             )}
-            <Pager page={page} pageSize={PAGE} total={results.data?.total ?? 0} onPage={setPage} label="Exclusion list pages" />
+            <Pager page={page} pageSize={PAGE} total={resultsSettling ? 0 : results.data?.total ?? 0} onPage={setPage} label="Exclusion list pages" />
           </div>
-          {results.data && results.data.matchingNotEligible > 0 ? (
+          {!resultsSettling && results.data && results.data.matchingNotEligible > 0 ? (
             <p className="muted small">
               {results.data.matchingNotEligible} more matching {results.data.matchingNotEligible === 1 ? "list is" : "lists are"} a draft, still sourcing, empty or archived, so not offered as a complete exclusion set.
             </p>
           ) : null}
+          {matching.isError && !tooMany && !searchSettling ? <Notice tone="danger">Could not count matching lists: {matching.error.message}</Notice> : null}
         </>
       ) : null}
 

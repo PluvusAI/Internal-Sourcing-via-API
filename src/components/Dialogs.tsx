@@ -8,31 +8,44 @@ import { clearKey, pendingKey, browserKeyStore } from "../lib/idempotency";
 import { findMoreDefault, isLimitError, targetProblem } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
 import { navigate } from "../router";
-import { Modal, Notice, Spinner, errorText } from "./ui";
+import { Modal, Notice, Spinner, errorText, useIsMounted } from "./ui";
 
 /** "New sourcing list", or "New list using these criteria" when `from` is a sourced list. */
 export function NewListDialog({ from, onClose }: { from: Pick<ListSummary, "id" | "name"> | null; onClose: () => void }) {
   const [name, setName] = useState(from ? suggestNextName(from.name) : "");
   const id = useId();
   const qc = useQueryClient();
+  const mounted = useIsMounted();
+  const submitting = useRef(false);
   const create = useMutation({
     mutationFn: () => api.createList({ name: name.trim(), ...(from ? { deriveFromListId: from.id } : {}) }),
     onSuccess: (list) => {
       void qc.invalidateQueries({ queryKey: ["lists"] });
+      if (!mounted.current) return;
       onClose();
       navigate(`/lists/${list.id}`);
     },
+    onSettled: () => { submitting.current = false; },
   });
+  const submit = (): void => {
+    if (!name.trim() || submitting.current) return;
+    submitting.current = true;
+    create.mutate();
+  };
+  const close = (): void => {
+    if (!submitting.current) onClose();
+  };
   return (
     <Modal
       title={from ? "New list using these criteria" : "New sourcing list"}
-      onClose={onClose}
+      onClose={close}
+      closeDisabled={create.isPending}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" onClick={close} disabled={create.isPending}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>
+          <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={submit}>
             {create.isPending ? <Spinner label="Creating" /> : null} Create list
           </button>
         </>
@@ -42,15 +55,16 @@ export function NewListDialog({ from, onClose }: { from: Pick<ListSummary, "id" 
         className="stack"
         onSubmit={(e) => {
           e.preventDefault();
-          if (name.trim()) create.mutate();
+          submit();
         }}
       >
         <div className="field">
           <label htmlFor={id}>List name</label>
-          <input id={id} data-autofocus className="input" value={name} maxLength={120} onChange={(e) => setName(e.target.value)} placeholder="Brand A - Batch 1" />
+          <input id={id} data-autofocus className="input" value={name} maxLength={120} readOnly={create.isPending} onChange={(e) => setName(e.target.value)} placeholder="Brand A - Batch 1" />
           <span className="hint">Include the brand or client name so the list is easy to find, e.g. “Brand A - Batch 2”.</span>
         </div>
       </form>
+      {create.isPending ? <Notice tone="info">Creating this list. This dialog will open the new draft when it is ready.</Notice> : null}
       {from ? (
         <Notice tone="info">
           Copies the criteria and exclusion lists of <strong>{from.name}</strong>, and also excludes <strong>{from.name}</strong> itself. Its creators are not copied. You can review and edit everything before starting.

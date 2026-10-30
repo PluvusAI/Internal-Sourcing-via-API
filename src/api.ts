@@ -36,7 +36,7 @@ export const setTokenGetter = (fn: TokenGetter): void => {
   getToken = fn;
 };
 
-async function send(method: string, path: string, body?: unknown): Promise<Response> {
+async function send(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<Response> {
   const token = await getToken();
   let res: Response;
   try {
@@ -45,6 +45,7 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
       headers: {
         Accept: "application/json",
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+        ...extraHeaders,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -65,7 +66,7 @@ async function send(method: string, path: string, body?: unknown): Promise<Respo
   throw new ApiError(res.status, typeof code === "string" ? code : "unexpected_response", typeof message === "string" ? message : `The server answered ${res.status}.`, details);
 }
 
-const json = async <T,>(method: string, path: string, body?: unknown): Promise<T> => (await send(method, path, body)).json() as Promise<T>;
+const json = async <T,>(method: string, path: string, body?: unknown, extraHeaders?: Record<string, string>): Promise<T> => (await send(method, path, body, extraHeaders)).json() as Promise<T>;
 
 const qs = (p: Record<string, string | number | boolean | undefined>): string => {
   const u = new URLSearchParams();
@@ -98,7 +99,7 @@ export const api = {
     json<{ operation: OperationView; idempotentReplay: boolean }>("POST", `/lists/${id}/operations`, body),
   previewExclusions: (listIds: string[]) => json<ExclusionPreview>("POST", "/exclusions/preview", { listIds }),
   previewImport: (csv: string, mapping: ImportMapping | null) => json<ImportReport>("POST", "/imports/preview", { csv, mapping }),
-  commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial: boolean }) => json<{ list: ListDetail; report: ImportReport }>("POST", "/imports", body),
+  commitImport: (body: { csv: string; name: string; mapping: ImportMapping; acknowledgePartial: boolean }, idempotencyKey: string) => json<{ list: ListDetail; report: ImportReport }>("POST", "/imports", body, { "Idempotency-Key": idempotencyKey }),
   suggest: (body: { brief: string; brandName?: string; product?: string; platforms: SourcingPlatform[] }) => json<InternalSuggestion>("POST", "/criteria/suggest", body),
   /** The file as a Blob, the row count the source wrote, and its name. */
   async exportList(id: string, body: ExportRequest): Promise<{ blob: Blob; count: number; filename: string }> {

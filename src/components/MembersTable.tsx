@@ -20,7 +20,9 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
   const [open, setOpen] = useState<MemberView | null>(null);
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["members", listId, page], queryFn: () => api.members(listId, { page, pageSize: PAGE }), placeholderData: keepPreviousData, refetchInterval: live ? 4000 : false });
-  const data = q.data;
+  // A page change may temporarily carry the previous page's data. Never make those rows
+  // selectable under the new page number.
+  const data = q.isPlaceholderData ? undefined : q.data;
   useEffect(() => {
     if (data) onSelectionCount(data.selectedCount, data.total);
   }, [data, onSelectionCount]);
@@ -47,16 +49,23 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
     if (pageBox.current) pageBox.current.indeterminate = pageSelected > 0 && pageSelected < rows.length;
   }, [pageSelected, rows.length]);
 
-  if (q.isLoading) return <div className="empty"><Spinner label="Loading creators" /></div>;
+  if (q.isLoading || q.isPlaceholderData) return <div className="empty"><Spinner label="Loading creators" /></div>;
   if (q.isError) return <div className="card-pad"><Notice tone="danger">Could not load creators: {q.error.message}</Notice></div>;
   if (!data || data.total === 0) {
     return <div className="empty empty-state"><Users size={28} aria-hidden /><strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "Qualified creators appear here as soon as they are saved." : kind === "sourced" ? "No creators were saved by this search. Review the latest search above, then use Find more if needed." : "This imported list has no creators. Review its import report above."}</span></div>;
   }
   const allSelected = data.selectedCount === data.total;
+  const fullPageSelected = rows.length > 0 && pageSelected === rows.length;
+  const togglePage = (): void => select.mutate({ selected: !fullPageSelected, memberIds: rows.map((m) => m.id) });
 
   return (
     <>
-      {pageSelected === rows.length && rows.length > 0 && data.total > rows.length && !allSelected ? (
+      <div className="mobile-page-select">
+        <button type="button" className="btn btn-sm" disabled={select.isPending} onClick={togglePage}>
+          {fullPageSelected ? "Unselect this page" : `Select this page (${count(rows.length)})`}
+        </button>
+      </div>
+      {fullPageSelected && data.total > rows.length && !allSelected ? (
         <div className="select-banner" role="status">
           All {rows.length} creators on this page are selected.
           <button type="button" className="link-btn" disabled={select.isPending} onClick={() => select.mutate({ selected: true, all: true })}>
@@ -86,10 +95,10 @@ export function MembersTable({ listId, kind, live, onSelectionCount, onExport }:
                   ref={pageBox}
                   type="checkbox"
                   className="checkbox"
-                  aria-label={pageSelected === rows.length ? "Unselect this page" : "Select this page"}
-                  checked={pageSelected === rows.length && rows.length > 0}
+                  aria-label={fullPageSelected ? "Unselect this page" : "Select this page"}
+                  checked={fullPageSelected}
                   disabled={select.isPending}
-                  onChange={() => select.mutate({ selected: pageSelected !== rows.length, memberIds: rows.map((m) => m.id) })}
+                  onChange={togglePage}
                 />
               </th>
               <th>Creator</th>

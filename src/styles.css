@@ -114,7 +114,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .input, .select, .textarea { width: 100%; min-height: 36px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--fieldBorder); background: var(--panel); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--fieldBorderHover); }
 .textarea { min-height: 72px; resize: vertical; }
-.input[aria-invalid="true"], .textarea[aria-invalid="true"] { border-color: var(--danger); }
+.input[aria-invalid="true"], .select[aria-invalid="true"], .textarea[aria-invalid="true"] { border-color: var(--danger); }
+.native-select { display: block; position: relative; min-width: 0; }
+.native-select > .select { appearance: none; padding-right: 34px; cursor: pointer; }
+.native-select > svg { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: var(--textMuted); pointer-events: none; }
+.native-select > .select:disabled { opacity: .55; cursor: not-allowed; }
 .search { position: relative; flex: 1; min-width: 220px; max-width: 520px; }
 .search .input { padding-left: 34px; }
 .search svg { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--textMuted); }
@@ -172,6 +176,7 @@ table.table { width: 100%; border-collapse: collapse; }
 .select-banner { padding: 8px 12px; background: var(--accentWash); border-bottom: 1px solid var(--hairline); display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 .bulk-actions { justify-content: space-between; }
 .bulk-actions .actions { margin-left: auto; }
+.mobile-page-select { display: none; }
 .empty { padding: 36px 16px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; color: var(--textMuted); }
 .empty-state { min-height: 220px; justify-content: center; max-width: 100%; }
 .empty-state > svg { color: var(--accentDim); }
@@ -248,6 +253,8 @@ table.table { width: 100%; border-collapse: collapse; }
 code.headers { display: block; white-space: pre-wrap; font-size: 12px; max-height: 160px; overflow: auto; padding: 8px 10px; background: var(--panelAlt); border-radius: 8px; }
 
 @media (max-width: 800px) {
+  .mobile-page-select { display: flex; padding: 10px 12px; border-bottom: 1px solid var(--hairline); }
+  .members-table thead .check input { display: none; }
   .import-mapping-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .lists-table, .members-table, .lists-table tbody, .members-table tbody { display: block; width: 100%; }
   .lists-table thead, .members-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
