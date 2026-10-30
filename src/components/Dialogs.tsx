@@ -7,7 +7,7 @@ import { count } from "../lib/format";
 import { clearKey, pendingKey, browserKeyStore } from "../lib/idempotency";
 import { findMoreDefault, isLimitError, targetProblem } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
-import { navigate } from "../router";
+import { listHref, navigate } from "../router";
 import { Modal, Notice, Spinner, errorText, useIsMounted } from "./ui";
 
 /** "New sourcing list", or "New list using these criteria" when `from` is a sourced list. */
@@ -23,7 +23,7 @@ export function NewListDialog({ from, onClose }: { from: Pick<ListSummary, "id" 
       void qc.invalidateQueries({ queryKey: ["lists"] });
       if (!mounted.current) return;
       onClose();
-      navigate(`/lists/${list.id}`);
+      navigate(listHref(list.id));
     },
     onSettled: () => { submitting.current = false; },
   });

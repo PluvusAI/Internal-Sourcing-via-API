@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "project": {
+    "name": "pluvus-internal-sourcing",
+    "productType": "Internal creator sourcing workspace",
+    "stack": [
+      "react",
+      "vite"
+    ]
+  },
+  "sources": {
+    "tokens": [
+      "src/styles.css"
+    ],
+    "components": [
+      "src/components/ui.tsx",
+      "src/components/CriteriaForm.tsx",
+      "src/components/ExclusionPicker.tsx"
+    ],
+    "assets": [],
+    "instructions": []
+  },
+  "design": {
+    "colorMode": "light and system dark",
+    "colors": {
+      "background": "var(--bg)",
+      "surface": "var(--panel)",
+      "accent": "var(--accent)",
+      "text": "var(--text)",
+      "muted": "var(--textMuted)",
+      "border": "var(--hairline)"
+    },
+    "typography": {
+      "body": "Inter Variable",
+      "display": "Fraunces Variable"
+    },
+    "spacing": {},
+    "radius": {},
+    "shadows": {},
+    "motion": {},
+    "density": "compact internal tool"
+  },
+  "components": {
+    "installed": [],
+    "preferredPrimitives": [
+      "Native labelled inputs and checkboxes",
+      "Existing TagInput, Notice, Spinner, Pager and Modal",
+      "Lucide icons"
+    ],
+    "patterns": []
+  },
+  "constraints": {
+    "must": [
+      "Use existing Pluvus CSS tokens and native controls",
+      "Retain autosave, revision fencing, idempotency, exclusions and backend count limits",
+      "Keep search and navigation in the URL"
+    ],
+    "avoid": [
+      "New runtime dependencies",
+      "Decorative animation",
+      "Copying reference branding"
+    ]
+  },
+  "decisions": [
+    "Sourcing setup uses Criteria \u2192 Exclusions \u2192 Review & search, with editable steps and one primary action per step.",
+    "Archive is a separate library view; use labelled Archive and Restore actions with undo feedback.",
+    "Suggested criteria use semantic field icons and a Sparkles marker until edited."
+  ],
+  "evidence": [
+    {
+      "fact": "project.stack:react",
+      "source": "package.json"
+    },
+    {
+      "fact": "project.stack:vite",
+      "source": "package.json"
+    }
+  ],
+  "generatedAt": "2026-10-30T09:32:26.636Z"
+}

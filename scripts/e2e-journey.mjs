@@ -97,7 +97,7 @@ try {
   await page.getByLabel("Min followers").fill("10000");
   await page.getByLabel("Max followers").fill("200000");
   await page.getByLabel("Niche / search query").fill("skincare routines");
-  await page.getByLabel("New qualifying creators to find").fill("5");
+  await page.getByRole("button", { name: "Continue to exclusions" }).click();
 
   step("picker: search Brand A, select all matching");
   const picker = page.locator(".picker");
@@ -114,6 +114,9 @@ try {
   await shot("03-draft-with-exclusions");
 
   step("find creators");
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  await page.getByLabel("New qualifying creators to find").fill("5");
+  await page.getByText("Saved", { exact: true }).waitFor();
   await page.getByRole("button", { name: "Find creators" }).click();
   await page.getByRole("heading", { name: "Latest search" }).waitFor();
   await waitForStatus(/Complete|Partial|Empty|Failed/);
@@ -173,12 +176,14 @@ try {
   await page.getByLabel("List name", { exact: true }).fill(`${A} - Batch 2`);
   await page.getByRole("button", { name: "Create list" }).click();
   await page.getByRole("heading", { name: "Define your ideal creators" }).waitFor();
+  assert.equal(await page.getByLabel("Niche / search query").inputValue(), "skincare routines");
+  await page.getByRole("button", { name: "Continue to exclusions" }).click();
   const chips = await page.locator(".picker .chip").allInnerTexts();
   assert.equal(chips.length, 3);
   assert.ok(chips.some((c) => c.includes(`${A} - Existing creators`)) && chips.some((c) => c.includes(`${A} - Lookbook`)) && chips.some((c) => c.includes(`${A} - Batch 1`)));
-  assert.equal(await page.getByLabel("Niche / search query").inputValue(), "skincare routines");
   await page.getByText(/3 lists selected; 17 unique creators excluded/).waitFor();
   await shot("08-batch2-draft");
+  await page.getByRole("button", { name: "Continue to review" }).click();
   await page.getByRole("button", { name: "Find creators" }).click();
   await waitForStatus(/Complete|Partial|Empty/);
   const batch2 = await handlesOnPage();

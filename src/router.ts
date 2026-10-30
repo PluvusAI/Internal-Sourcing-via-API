@@ -183,3 +183,17 @@ export function linkHandler(href: string) {
     navigate(href);
   };
 }
+
+/** A list carries its library location so its Back link survives refresh and copied URLs. */
+export function libraryHref(from: string | null, fallback = "/"): string {
+  if (!from?.startsWith("/")) return fallback;
+  const url = new URL(from, "http://local");
+  if (url.origin !== "http://local" || url.pathname !== "/") return fallback;
+  return `${url.pathname}${url.search}`;
+}
+
+export function listHref(id: string): string {
+  const current = new URL(window.location.href);
+  const from = current.pathname === "/" ? `${current.pathname}${current.search}` : libraryHref(current.searchParams.get("from"));
+  return `/lists/${id}?${new URLSearchParams({ from })}`;
+}

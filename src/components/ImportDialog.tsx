@@ -5,7 +5,7 @@ import type { IdentityPlatform, ImportMapping, ImportReport, ImportRowStatus } f
 import { api, ApiError } from "../api";
 import { count } from "../lib/format";
 import { browserKeyStore, clearImportKey, importFingerprint, pendingImportKey } from "../lib/idempotency";
-import { navigate } from "../router";
+import { listHref, navigate } from "../router";
 import { Modal, NativeSelect, Notice, ProgressSteps, Spinner, errorText, useDebounced, useIsMounted } from "./ui";
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -102,7 +102,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
       void qc.invalidateQueries({ queryKey: ["lists"] });
       if (!mounted.current) return;
       onClose();
-      navigate(`/lists/${list.id}`);
+      navigate(listHref(list.id));
     },
     onSettled: () => { submitting.current = false; },
   });

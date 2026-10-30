@@ -112,8 +112,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     };
   };
   const get = (listId: string): MockList => lists.get(listId) ?? fail(404, "list_not_found", "No such list.");
-  const matches = (l: MockList, q: string | undefined, eligible: boolean | undefined, includeArchived: boolean | undefined): boolean =>
-    (!q || l.name.toLowerCase().includes(q.trim().toLowerCase())) && (includeArchived || l.archivedAt === null) && (!eligible || summary(l).eligibleForExclusion);
+  const matches = (l: MockList, q: string | undefined, eligible: boolean | undefined, includeArchived: boolean | undefined, archivedOnly = false): boolean =>
+    (!q || l.name.toLowerCase().includes(q.trim().toLowerCase())) && (archivedOnly ? l.archivedAt !== null : includeArchived || l.archivedAt === null) && (!eligible || summary(l).eligibleForExclusion);
   const sorted = (): MockList[] => [...lists.values()].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
 
   /** One status read moves a running mock search on by up to two sample creators. */
@@ -261,8 +261,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     async searchLists(p = {}) {
       const page = p.page ?? 1;
       const pageSize = p.pageSize ?? 25;
-      const all = sorted().filter((l) => matches(l, p.q, p.eligible, p.includeArchived));
-      const anyMatch = sorted().filter((l) => matches(l, p.q, false, false)).length;
+      const all = sorted().filter((l) => matches(l, p.q, p.eligible, p.includeArchived, p.archivedOnly));
+      const anyMatch = sorted().filter((l) => matches(l, p.q, false, p.eligible ? false : p.includeArchived, p.archivedOnly)).length;
       return { q: (p.q ?? "").trim(), page, pageSize, total: all.length, matchingNotEligible: p.eligible ? anyMatch - all.length : 0, lists: all.slice((page - 1) * pageSize, page * pageSize).map(summary) };
     },
     async matchingListIds(p = {}) {

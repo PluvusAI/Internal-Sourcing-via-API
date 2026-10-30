@@ -27,7 +27,10 @@ moved here with its history. The backend side of PLU-505 is on that repository's
 
 - **Lists home** — one searchable library (“Search lists by brand or list name”, case-insensitive
   “name contains”), with type, creator count, status and last update; search and page live in the
-  URL so Back returns to them. New sourcing list · Import list · Open · New list using these
+  URL so Back returns to them. Active lists and Archived are separate views; Archive moves a list
+  out of the active view, Restore returns it, and Undo reverses the last archive. Filtering and totals
+  are computed on the backend before pagination. Detail links retain the originating library search
+  and archive view. New sourcing list · Import list · Open · New list using these
   criteria · Archive (no delete).
 - **Import list** — choose CSV → name → map identity columns (platform, handle, profile URL, provider
   ID, Pluvus creator ID; or the Sheets per-platform columns) → preview valid / duplicate / invalid /
@@ -37,7 +40,11 @@ moved here with its history. The backend side of PLU-505 is on that repository's
   `handle` (for example, `instagram,janedoe`). A profile URL, provider ID, creator ID, or recognised
   per-platform columns can also identify a creator. Names and emails alone cannot. The backend
   suggests mappings from other header names, previews every row, and enforces the import rules.
-- **New sourcing list** — autosaved draft (Saving / Saved / Save failed; a stale tab cannot overwrite a
+- **New sourcing list** — three steps (Criteria → Exclusions → Review & search), with direct step
+  navigation and Back/Forward/reload support. Criteria are grouped by platform, content and fit,
+  location and language, and optional brand context. Suggested fields have icons and explicit markers;
+  existing values can be kept or replaced individually. The requested count and final summary live
+  in Review & search. An autosaved draft (Saving / Saved / Save failed; a stale tab cannot overwrite a
   newer draft), supported criteria only (platforms with follower/engagement ranges, creator location —
   not audience —, language, niche, topic keywords, ideal creator, qualitative fit restrictions, brand
   context), requested count (up to the source's maximum), optional **Suggest criteria** that fills
@@ -192,6 +199,10 @@ Chromium against a running app (development sign-in), e.g. the local stack above
 ```bash
 CHROMIUM_PATH=/path/to/chrome node scripts/e2e-journey.mjs http://127.0.0.1:5000 ./e2e-shots
 ```
+
+`scripts/e2e-sourcing-polish.mjs` (same usage, run against mock mode) checks archive/restore, switching
+views during a pending archive, last-page recovery, return navigation, step validation, suggestions,
+reload, mobile widths and dark mode.
 
 `scripts/e2e-limits.mjs` (same usage) checks that both forms follow the backend's current maximum,
 including a page that still holds an older, higher one.
