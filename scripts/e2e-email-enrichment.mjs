@@ -81,7 +81,24 @@ try {
   for (const format of ['default', 'sheets']) {
     const res = await fetch(`${base}/api/lists/${list.id}/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all', format }) });
     assert.ok(res.ok); const csv = await res.text(); assert.match(csv, /supplied@example.com/); assert.match(csv, new RegExp(`${sourced[0].handle}@example.com`));
+    assert.match(csv, /23456/);
+    if (format === 'sheets') { assert.match(csv, /instagram_media_count/); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/); }
   }
+  const beforeExport = await api(`/lists/${list.id}/email-jobs`);
+  await page.getByRole('button', { name: 'Export selected', exact: true }).click();
+  const exportDialog = page.getByRole('dialog');
+  await exportDialog.getByRole('radio', { name: /Full details/ }).waitFor();
+  assert.ok(await exportDialog.getByRole('radio', { name: /Full details/ }).isChecked());
+  const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lists/${list.id}/export`));
+  const downloaded = page.waitForEvent('download');
+  await exportDialog.getByRole('button', { name: 'Download CSV', exact: true }).click();
+  const sent = (await request).postDataJSON(); assert.equal(sent.format, 'sheets'); assert.equal(sent.scope, 'selected');
+  const csv = readFileSync(await (await downloaded).path(), 'utf8');
+  assert.equal(csv.split('\r\n')[0].replace(/^\uFEFF/, '').split(',').length, 93);
+  assert.match(csv, new RegExp(`${sourced[0].handle}@example.com`)); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/);
+  assert.doesNotMatch(csv, /supplied@example.com/, 'selected export includes only the selected sourced profiles');
+  await exportDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  assert.deepEqual(await api(`/lists/${list.id}/email-jobs`), beforeExport, 'download adds no email job or credits');
   assert.deepEqual(errors, []);
   console.log('PASS: real backend selected/single/all email retrieval, cost preview, reload persistence, supplied/cleared preservation, both exports, phone layout and dark mode.');
 } catch (err) { console.error(await page.getByRole('dialog').innerText().catch(() => 'No dialog')); await page.screenshot({ path: join(shots, 'failure.png'), fullPage: true, animations: 'disabled' }); throw err; } finally { await browser.close(); }
