@@ -290,7 +290,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         else if (creditsSpent + 0.2 > cap + 1e-9) status = "not_processed";
         else if (m.handle.includes("missing")) status = "not_found";
         else { m.email = `${m.handle}@example.com`; emailCache.set(keyOf(m), m.email); creditsSpent = +(creditsSpent + 0.2).toFixed(4); status = "found"; }
-        m.emailLookupStatus = m.email ? "available" : status; m.emailCheckedAt = now();
+        if (m.emailLookupStatus !== "cleared") { m.emailLookupStatus = m.email ? "available" : status; m.emailCheckedAt = now(); }
         if (m.email && status !== "skipped") m.emailSource ??= hadEmail ? "provided" : "influencers_club";
         counts[status] = (counts[status] ?? 0) + 1;
       }

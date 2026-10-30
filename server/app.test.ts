@@ -403,6 +403,10 @@ test("sample previews preserve cleared cached contacts, supplied provenance and 
   await mock.updateCreator(second.id, clear.id, { email: null });
   const preview = await mock.previewEmails(second.id, { scope: "all" });
   assert.equal(preview.reusable, 0); assert.equal(preview.skipped, 1); assert.equal(preview.eligible, 0); assert.equal(preview.estimatedMaxCredits, 0);
+  for (const idempotencyKey of ["clear-skip-one", "clear-skip-two"]) await mock.startEmailJob(second.id, { memberIds: [clear.id], maxCredits: 2, idempotencyKey });
+  const keptClear = (await mock.members(second.id)).members[0]!;
+  assert.equal(keptClear.email, null); assert.equal(keptClear.emailLookupStatus, "cleared");
+  assert.equal((await mock.previewEmails(second.id, { scope: "all" })).eligible, 0);
   const two = await mock.startEmailJob(first.id, { memberIds: [source.id], maxCredits: 2, idempotencyKey: "history-second-key" });
   assert.equal((await mock.emailJob(first.id)).job!.id, two.job.id);
   assert.equal((await mock.emailJob(first.id, one.job.id)).job!.id, one.job.id);
