@@ -76,8 +76,8 @@ export function setParams(update: Record<string, string | null>, opts: { push?: 
 }
 
 export function linkHandler(href: string) {
-  return (e: { preventDefault(): void; metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; button?: number }): void => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || (e.button ?? 0) !== 0) return;
+  return (e: { preventDefault(): void; metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean; altKey?: boolean; button?: number }): void => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || (e.button ?? 0) !== 0) return;
     e.preventDefault();
     navigate(href);
   };

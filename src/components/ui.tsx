@@ -22,6 +22,21 @@ export function StatusBadge({ status }: { status: ListStatus }) {
   );
 }
 
+/** Compact, read-only progress list adapted to the app's tokens from 21st.dev's Stepper pattern. */
+export function ProgressSteps({ steps, current }: { steps: readonly string[]; current: number }) {
+  return (
+    <ol className="progress-steps" aria-label="Import progress">
+      {steps.map((step, index) => (
+        <li key={step} className={index < current ? "is-complete" : index === current ? "is-current" : "is-upcoming"} aria-current={index === current ? "step" : undefined}>
+          <span className="progress-marker" aria-hidden>{index < current ? <CheckCircle2 size={15} /> : index + 1}</span>
+          <span>{step}</span>
+          <span className="sr-only">{index < current ? ", complete" : index === current ? ", current" : ", upcoming"}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export function Notice({ tone = "info", children, title }: { tone?: "info" | "warning" | "danger" | "success" | "neutral"; children: ReactNode; title?: string }) {
   const Icon = tone === "danger" || tone === "warning" ? AlertTriangle : tone === "success" ? CheckCircle2 : Info;
   return (
@@ -50,12 +65,18 @@ function useFocusTrap(onClose: () => void) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const first = ref.current?.querySelector<HTMLElement>("[data-autofocus]") ?? ref.current?.querySelector<HTMLElement>(FOCUSABLE);
     first?.focus();
-    return () => opener?.focus?.();
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      opener?.focus?.();
+    };
   }, []);
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>): void => {
     if (e.key === "Escape") {
+      e.preventDefault();
       e.stopPropagation();
       onClose();
       return;
@@ -125,7 +146,7 @@ export function TagInput({ id, values, onChange, placeholder, max, invalid, desc
     setDraft("");
   };
   return (
-    <div className="tags" aria-invalid={invalid ? true : undefined}>
+    <div className="tags" data-invalid={invalid ? "true" : undefined}>
       {values.map((v) => (
         <span className="tag" key={v}>
           {v}
@@ -138,6 +159,7 @@ export function TagInput({ id, values, onChange, placeholder, max, invalid, desc
         id={id}
         value={draft}
         placeholder={values.length === 0 ? placeholder : ""}
+        aria-invalid={invalid ? true : undefined}
         aria-describedby={describedBy}
         onChange={(e) => (e.target.value.endsWith(",") ? add(e.target.value) : setDraft(e.target.value))}
         onKeyDown={(e) => {

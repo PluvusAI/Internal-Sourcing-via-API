@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Copy, Download, Pencil, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, Copy, Download, Pencil, RefreshCw, Search, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
@@ -158,6 +158,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
     <>
       <div className="page-head">
         <div className="field" style={{ flex: 1, maxWidth: 560 }}>
+          <span className="eyebrow">New sourcing list / Draft</span>
           <label htmlFor={`${uid}-name`}>List name</label>
           <input id={`${uid}-name`} className="input" style={{ fontSize: 18, fontWeight: 700 }} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} aria-invalid={!name.trim()} />
           {!name.trim() ? <span className="error">A list name is required.</span> : <span className="hint">Draft · new sourcing list</span>}
@@ -172,8 +173,9 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
 
       <div className="layout-2" style={{ marginTop: 16 }}>
         <div className="card card-pad section">
-          <div className="section-head">
-            <h2>Creator criteria</h2>
+          <div className="step-heading">
+            <span className="step-index" aria-hidden>01</span>
+            <div><h2>Define your ideal creators</h2><p className="muted small">Set the search and fit criteria for this batch.</p></div>
           </div>
           <details className="platform-block">
             <summary className="inline" style={{ cursor: "pointer", fontWeight: 600 }}>
@@ -219,12 +221,18 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
 
         <div className="section">
           <div className="card card-pad section">
-            <h2>Exclude creators from these lists</h2>
+            <div className="step-heading">
+              <span className="step-index" aria-hidden>02</span>
+              <div><h2>Exclude creators from these lists</h2><p className="muted small">Avoid overlap with rosters already in your workspace.</p></div>
+            </div>
             <p className="muted small">Creators saved on the lists you select (counted once even if they appear in several), and every creator already on this list, are skipped. Lists you do not select are not excluded, whatever their name.</p>
             <ExclusionPicker selection={selection} onChange={setSelection} selfId={list.id} locked={false} />
           </div>
           <div className="card card-pad section">
-            <h2>Find creators</h2>
+            <div className="step-heading">
+              <span className="step-index" aria-hidden>03</span>
+              <div><h2>Start the search</h2><p className="muted small">Your criteria are fixed once the search starts.</p></div>
+            </div>
             <p className="muted small">
               Starts one search for up to {target ? count(target) : "the requested number of"} new qualifying creators. It runs on the sourcing service; you can leave this page and come back.
             </p>
@@ -304,6 +312,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
     <>
       <div className="page-head">
         <div style={{ minWidth: 0, flex: 1 }}>
+          <span className="eyebrow">Creator lists / {list.kind === "imported" ? "Imported roster" : "Sourcing workspace"}</span>
           <RenameTitle list={list} />
           <div className="context inline" style={{ flexWrap: "wrap" }}>
             <StatusBadge status={list.status} />
@@ -340,12 +349,12 @@ function ListWorkspace({ list }: { list: ListDetail }) {
         <div className="toolbar">
           <h2>Creators</h2>
           <span className="muted small">{active ? "Qualified creators appear here as soon as they are saved." : `${count(list.memberCount)} saved`}</span>
-          <span style={{ flex: 1 }} />
+          <span className="toolbar-spacer" />
           <button type="button" className="btn btn-sm btn-ghost" onClick={refresh}>
-            Refresh
+            <RefreshCw size={14} aria-hidden /> Refresh
           </button>
         </div>
-        <MembersTable listId={list.id} kind={list.kind} live={active} onSelectionCount={onSelectionCount} />
+        <MembersTable listId={list.id} kind={list.kind} live={active} onSelectionCount={onSelectionCount} onExport={(n, total) => { setSelected({ n, total }); setDialog("export"); }} />
       </div>
 
       {dialog === "export" ? <ExportDialog listId={list.id} listName={list.name} total={selected.total} selectedCount={selected.n} onClose={() => setDialog(null)} /> : null}

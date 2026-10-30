@@ -112,11 +112,11 @@ export function FindMoreDialog({ listId, listName, onClose, onStarted }: { listI
     >
       <div className="field">
         <label htmlFor={id}>Additional new creators</label>
-        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={text} onChange={(e) => setN(e.target.value)} aria-invalid={problem !== null} aria-describedby={`${id}-hint`} />
+        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={text} onChange={(e) => setN(e.target.value)} aria-invalid={problem !== null} aria-describedby={`${id}-hint${problem && text !== "" ? ` ${id}-error` : ""}`} />
         <span className="hint" id={`${id}-hint`}>
           {meta.isLoading ? "Checking the current limit…" : max !== null ? `1 to ${max} per search (the sourcing service’s current limit).` : null}
         </span>
-        {problem && text !== "" ? <span className="error">{problem}</span> : null}
+        {problem && text !== "" ? <span className="error" id={`${id}-error`}>{problem}</span> : null}
       </div>
       {meta.isError ? <Notice tone="danger">The current limit could not be read: {errorText(meta.error)}</Notice> : null}
       <Notice tone="info">

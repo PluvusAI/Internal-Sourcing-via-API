@@ -49,7 +49,7 @@ const step = (s) => console.log(`• ${s}`);
 
 async function importList(name, file, { acknowledge }) {
   await page.goto(base);
-  await page.getByRole("button", { name: "Import list" }).click();
+  await page.getByRole("button", { name: "Import list" }).first().click();
   await page.getByLabel("CSV file").setInputFiles(file);
   await page.getByLabel("List name", { exact: true }).fill(name);
   await page.getByText("Will be imported").waitFor();
@@ -92,7 +92,7 @@ try {
   await page.getByRole("button", { name: "New sourcing list" }).click();
   await page.getByLabel("List name", { exact: true }).fill(`${A} - Batch 1`);
   await page.getByRole("button", { name: "Create list" }).click();
-  await page.getByRole("heading", { name: "Creator criteria" }).waitFor();
+  await page.getByRole("heading", { name: "Define your ideal creators" }).waitFor();
   await page.getByRole("checkbox", { name: "Instagram" }).check();
   await page.getByLabel("Min followers").fill("10000");
   await page.getByLabel("Max followers").fill("200000");
@@ -172,7 +172,7 @@ try {
   await page.getByRole("button", { name: "New list using these criteria" }).click();
   await page.getByLabel("List name", { exact: true }).fill(`${A} - Batch 2`);
   await page.getByRole("button", { name: "Create list" }).click();
-  await page.getByRole("heading", { name: "Creator criteria" }).waitFor();
+  await page.getByRole("heading", { name: "Define your ideal creators" }).waitFor();
   const chips = await page.locator(".picker .chip").allInnerTexts();
   assert.equal(chips.length, 3);
   assert.ok(chips.some((c) => c.includes(`${A} - Existing creators`)) && chips.some((c) => c.includes(`${A} - Lookbook`)) && chips.some((c) => c.includes(`${A} - Batch 1`)));
