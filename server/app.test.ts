@@ -389,3 +389,23 @@ test("sample email enrichment preserves provided addresses and manual clears wit
   assert.equal(rows.find(m => m.id === a.id)!.email, "alpha@example.com");
   assert.match((await mock.exportList(list.id, { scope: "all", format: "sheets" })).csv, /alpha@example.com/);
 });
+
+
+test("sample previews preserve cleared cached contacts, supplied provenance and historical job IDs", async () => {
+  const mock = createMockSource();
+  const first = await mock.createList({ name: "First sample emails" });
+  const source = (await mock.addCreator(first.id, { platform: "instagram", handle: "cachedsame" })).member;
+  const supplied = (await mock.addCreator(first.id, { platform: "instagram", handle: "suppliedsame", email: "provided@example.com" })).member;
+  const one = await mock.startEmailJob(first.id, { memberIds: [source.id, supplied.id], maxCredits: 2, idempotencyKey: "history-first-key" });
+  assert.equal((await mock.members(first.id)).members.find(m => m.id === supplied.id)!.emailSource, "provided");
+  const second = await mock.createList({ name: "Cleared cached contact" });
+  const clear = (await mock.addCreator(second.id, { platform: "instagram", handle: "cachedsame" })).member;
+  await mock.updateCreator(second.id, clear.id, { email: null });
+  const preview = await mock.previewEmails(second.id, { scope: "all" });
+  assert.equal(preview.reusable, 0); assert.equal(preview.skipped, 1); assert.equal(preview.eligible, 0); assert.equal(preview.estimatedMaxCredits, 0);
+  const two = await mock.startEmailJob(first.id, { memberIds: [source.id], maxCredits: 2, idempotencyKey: "history-second-key" });
+  assert.equal((await mock.emailJob(first.id)).job!.id, two.job.id);
+  assert.equal((await mock.emailJob(first.id, one.job.id)).job!.id, one.job.id);
+  await assert.rejects(() => mock.emailJob(second.id, one.job.id), /No such email job/);
+  await assert.rejects(() => mock.emailJob(first.id, "unknown-job"), /No such email job/);
+});
