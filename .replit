@@ -42,3 +42,11 @@ waitForPort = 5000
 
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[userenv]
+
+[userenv.shared]
+SOURCING_API_BASE_URL = "https://pluvus-workflow-prototype.replit.app"
+VITE_CLERK_PUBLISHABLE_KEY = "pk_test_Y2FyZWZ1bC1wb3Jwb2lzZS01MjgzLmNsZXJrLmFjY291bnRzLmRldiQ"
+INTERNAL_APP_ALLOWED_USER_IDS = "na"
+INTERNAL_APP_ALLOWED_ORG_IDS = "na"
