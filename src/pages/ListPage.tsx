@@ -17,7 +17,7 @@ import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
-import { libraryHref, linkHandler, navigate, parseRoute, registerNavigationBlocker, setParams, useLocation, type NavigationAttempt } from "../router";
+import { libraryHref, listReturnHref, linkHandler, navigate, parseRoute, registerNavigationBlocker, setParams, useLocation, type NavigationAttempt } from "../router";
 
 export function ListPage({ id }: { id: string }) {
   const meta = useMeta();
@@ -28,7 +28,7 @@ export function ListPage({ id }: { id: string }) {
     refetchInterval: (q) => emailJobActive(q.state.data?.emailJob) ? 3000 : pollMs(q.state.data?.operations.find((o) => o.id === q.state.data?.activeOperationId) ?? null),
   });
 
-  const returnHref = libraryHref(params.get("from"), list.data?.archivedAt ? "/?archived=1" : "/");
+  const returnHref = listReturnHref(params.get("from"), Boolean(list.data?.archivedAt));
   const back = (
     <a href={returnHref} className="btn btn-ghost btn-sm" onClick={linkHandler(returnHref)} style={{ marginBottom: 12 }}>
       <ArrowLeft size={14} aria-hidden /> {returnHref.includes("archived=1") ? "Archived lists" : "All lists"}

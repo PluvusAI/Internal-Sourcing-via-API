@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useId, useRef, useState } from "react";
-import type { CreatorDetailsPatch, IdentityPlatform, ListSummary, MemberView } from "../../server/sourceClient";
+import type { CreatorDetailsPatch, IdentityPlatform, ListDetail, ListSummary, MemberView } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
+import { clearArchiveFeedback } from "../lib/archive";
 import { Trash2 } from "lucide-react";
 import { count } from "../lib/format";
 import { refreshListData } from "../lib/listUpdates";
@@ -86,19 +87,19 @@ export function RemoveListDialog({ list, onClose, onRemoved }: { list: Pick<List
   const qc = useQueryClient();
   const mounted = useIsMounted();
   const submitting = useRef(false);
-  const remove = useMutation({ mutationFn: () => api.removeList(list.id), onSuccess: () => { refreshListData(qc, list.id); if (mounted.current) { onClose(); onRemoved(); } }, onSettled: () => { submitting.current = false; } });
+  const remove = useMutation({ mutationFn: () => api.removeList(list.id), onSuccess: () => { clearArchiveFeedback(qc, list.id); refreshListData(qc, list.id); if (mounted.current) { onClose(); onRemoved(); } }, onSettled: () => { submitting.current = false; } });
   const close = (): void => { if (!submitting.current) onClose(); };
-  return <Modal title="Remove this list?" onClose={close} closeDisabled={remove.isPending} footer={<>
+  return <Modal title="Delete this list?" onClose={close} closeDisabled={remove.isPending} footer={<>
     <button type="button" data-autofocus className="btn" disabled={remove.isPending} onClick={close}>Keep list</button>
-    <button type="button" className="btn btn-danger" disabled={remove.isPending} onClick={() => { if (!submitting.current) { submitting.current = true; remove.mutate(); } }}>{remove.isPending ? <Spinner label="Removing list" /> : null}Remove list</button>
+    <button type="button" className="btn btn-danger" disabled={remove.isPending} onClick={() => { if (!submitting.current) { submitting.current = true; remove.mutate(); } }}>{remove.isPending ? <Spinner label="Deleting list" /> : null}Delete list</button>
   </>}>
-    <p><strong>{list.name}</strong> will disappear from the list library. Its creator records, past searches, and already-saved exclusion links are retained so earlier sourcing decisions stay intact.</p>
+    <p><strong>{list.name}</strong> will be deleted from active and archived lists. Creator records, past searches, and existing exclusion references are kept.</p>
     {remove.isError ? <Notice tone="danger">{errorText(remove.error)}</Notice> : null}
   </Modal>;
 }
 
-export function RemoveListAction({ list, onRemoved }: { list: ListSummary; onRemoved?: () => void }) {
+export function RemoveListAction({ list, onRemoved }: { list: ListSummary & Pick<ListDetail, "emailJob">; onRemoved?: () => void }) {
   const [open, setOpen] = useState(false);
-  if ((list.status !== "draft" && !list.archivedAt) || list.status === "queued" || list.status === "sourcing") return null;
-  return <><button type="button" className="btn btn-sm btn-ghost btn-danger" aria-label={`Remove list ${list.name}`} onClick={() => setOpen(true)}><Trash2 size={14} aria-hidden />Remove list</button>{open ? <RemoveListDialog list={list} onClose={() => setOpen(false)} onRemoved={() => onRemoved?.()} /> : null}</>;
+  const busy = list.status === "queued" || list.status === "sourcing" || list.emailJob?.status === "queued" || list.emailJob?.status === "running";
+  return <><button type="button" className="btn btn-sm btn-ghost btn-danger" disabled={busy} title={busy ? "Wait for the current job to finish before deleting this list" : "Delete this list"} aria-label={`Delete list ${list.name}`} onClick={() => setOpen(true)}><Trash2 size={14} aria-hidden />Delete list</button>{open ? <RemoveListDialog list={list} onClose={() => setOpen(false)} onRemoved={() => onRemoved?.()} /> : null}</>;
 }

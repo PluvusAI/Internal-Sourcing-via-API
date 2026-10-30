@@ -1,6 +1,7 @@
 import { ClerkProvider, SignIn, UserButton, useAuth } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
+import { ArchiveFeedback } from "./components/ArchiveFeedback";
 import { api, ApiError, setTokenGetter, type SessionConfig } from "./api";
 import { Notice, Spinner } from "./components/ui";
 import { ListPage } from "./pages/ListPage";
@@ -97,7 +98,7 @@ function Shell({ config, account }: { config: SessionConfig; account: ReactNode 
           Not connected to the sourcing service: {setupError.message}
         </div>
       ) : null}
-      <main className="main" id="main" tabIndex={-1}>{route.name === "list" ? <ListPage key={route.id} id={route.id} /> : <ListsHome />}</main>
+      <main className="main" id="main" tabIndex={-1}><ArchiveFeedback />{route.name === "list" ? <ListPage key={route.id} id={route.id} /> : <ListsHome />}</main>
     </div>
   );
 }

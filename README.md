@@ -28,10 +28,12 @@ moved here with its history. The backend side of PLU-505 is on that repository's
 - **Lists home** — one searchable library (“Search lists by brand or list name”, case-insensitive
   “name contains”), with type, creator count, status and last update; search and page live in the
   URL so Back returns to them. Active lists and Archived are separate views; Archive moves a list
-  out of the active view, Restore returns it, and Undo reverses the last archive. Filtering and totals
-  are computed on the backend before pagination. Detail links retain the originating library search
-  and archive view. New sourcing list · Import list · Open · New list using these
-  criteria · Archive (no delete).
+  out of the active view, Restore returns it, and Undo remains available across page navigation.
+  Opening either view clears the previous view’s search and page. Filtering and totals are computed
+  on the backend before pagination. Detail links retain the originating library search unless an
+  archive or restore moves the list to the other view. Any list without an active search or email
+  job can be deleted directly after confirmation; creator records, search history and existing
+  exclusion references are retained.
 - **Import list** — choose CSV → name → map identity columns (platform, handle, profile URL, provider
   ID, Pluvus creator ID; or the Sheets per-platform columns) → preview valid / duplicate / invalid /
   ambiguous rows → acknowledge a partial import → open the saved list. Nothing is saved before Import.

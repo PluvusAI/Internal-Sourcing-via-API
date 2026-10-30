@@ -80,20 +80,13 @@ export function ListsHome() {
       </div>
 
       <nav className="library-nav" aria-label="List library">
-        <button type="button" aria-current={!showArchived ? "page" : undefined} onClick={() => setParams({ archived: null, page: null }, { push: true })}>
+        <button type="button" aria-current={!showArchived ? "page" : undefined} onClick={() => setParams({ archived: null, q: null, page: null }, { push: true })}>
           <ClipboardList size={16} aria-hidden /> Active lists
         </button>
-        <button type="button" aria-current={showArchived ? "page" : undefined} onClick={() => setParams({ archived: "1", page: null }, { push: true })}>
+        <button type="button" aria-current={showArchived ? "page" : undefined} onClick={() => setParams({ archived: "1", q: null, page: null }, { push: true })}>
           <Archive size={16} aria-hidden /> Archived
         </button>
       </nav>
-
-      {archive.data ? <div className="archive-feedback" role="status">
-        <span><strong>{archive.data.name}</strong> {archive.data.archivedAt ? "moved to archive." : "restored to active lists."}</span>
-        {archive.data.archivedAt ? <button type="button" className="link-btn" disabled={archive.isPending} onClick={() => archive.mutate({ id: archive.data!.id, archived: false })}>Undo</button> : null}
-        {archive.data.archivedAt && !showArchived ? <button type="button" className="link-btn" onClick={() => setParams({ archived: "1", page: null }, { push: true })}>View archive</button> : null}
-        <button type="button" className="btn btn-sm btn-ghost" onClick={() => archive.reset()} aria-label="Dismiss archive notification">Dismiss</button>
-      </div> : null}
 
       <div className="card library-card" aria-busy={lists.isLoading || resultsSettling}>
         <div className="toolbar">
@@ -123,10 +116,10 @@ export function ListsHome() {
           urlQ ? (
             <div className="empty empty-state">
               <Search size={26} aria-hidden />
-              <strong>No matching lists</strong>
-              <span>No list matches “{urlQ}”. Try another brand or list name.</span>
+              <strong>{showArchived ? "No matching archived lists" : "No matching lists"}</strong>
+              <span>{showArchived ? "No archived list" : "No list"} matches “{urlQ}”. Try another brand or list name.</span>
               <button type="button" className="btn" onClick={() => setParams({ q: null, page: null })}>
-                Clear search
+                {showArchived ? "View all archived lists" : "Clear search"}
               </button>
             </div>
           ) : showArchived ? (
@@ -134,7 +127,7 @@ export function ListsHome() {
               <Archive size={28} aria-hidden />
               <strong>No archived lists</strong>
               <span>Lists you archive appear here. You can restore them at any time.</span>
-              <button type="button" className="btn" onClick={() => setParams({ archived: null, page: null }, { push: true })}>Back to active lists</button>
+              <button type="button" className="btn" onClick={() => setParams({ archived: null, q: null, page: null }, { push: true })}>Back to active lists</button>
             </div>
           ) : (
             <div className="empty empty-state">

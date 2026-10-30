@@ -2,10 +2,10 @@
 
 | List stage | Available journey |
 | --- | --- |
-| Draft | Edit criteria/name/exclusions, add/edit/remove known creators, archive, or remove the list. Added creators are skipped when the first search finds additional profiles. |
+| Draft | Edit criteria/name/exclusions, add/edit/remove known creators, archive, or delete the list. Added creators are skipped when the first search finds additional profiles. |
 | Searching | Read progress/results and export saved rows. Wait for the search to finish before changing membership or removing the list. |
-| Finished | Add/edit/remove creators, rename/export, Find more, or create a new draft using the saved criteria. Changed search criteria belong to the new draft so old fit decisions keep their meaning. |
-| Archived | Review/export, restore to edit, or remove from the library. |
+| Finished | Add/edit/remove creators, rename/export, archive/delete the list, Find more, or create a new draft using the saved criteria. Changed search criteria belong to the new draft so old fit decisions keep their meaning. |
+| Archived | Review/export, restore to edit, or delete from the library. |
 
 Adding a creator accepts a profile URL or platform + handle. A duplicate returns the existing row;
 explicitly adding a removed profile restores it. Editable details are name, supplied email,
@@ -15,8 +15,8 @@ silently become attached to a different profile.
 Single-row and bulk removal use a confirmation showing the exact scope. Other lists are not
 changed. Removed profiles stay excluded from future searches on this same list. Existing running
 searches keep their snapshots; future searches that exclude an edited list use its current visible
-members. Removing a draft/archived list hides it from the library while preserving historical
-searches and existing exclusion references. This is not a personal-data erasure operation.
+members. Deleting any list without an active search or email job hides it from both library views while
+preserving creator records, historical searches and existing exclusion references. This is not a personal-data erasure operation.
 
 The criteria assistant calls OpenRouter from the app server after `OPENROUTER_API_KEY` is added to
 this app's Secrets. `OPENROUTER_MODEL` is optional. The UI explains missing configuration; model
