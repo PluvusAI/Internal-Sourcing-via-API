@@ -97,7 +97,7 @@ try {
   assert.equal(csv.split('\r\n')[0].replace(/^\uFEFF/, '').split(',').length, 93);
   assert.match(csv, new RegExp(`${sourced[0].handle}@example.com`)); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/);
   assert.doesNotMatch(csv, /supplied@example.com/, 'selected export includes only the selected sourced profiles');
-  await exportDialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await exportDialog.getByRole('button', { name: 'Close', exact: true }).last().click();
   assert.deepEqual(await api(`/lists/${list.id}/email-jobs`), beforeExport, 'download adds no email job or credits');
   assert.deepEqual(errors, []);
   console.log('PASS: real backend selected/single/all email retrieval, cost preview, reload persistence, supplied/cleared preservation, both exports, phone layout and dark mode.');
