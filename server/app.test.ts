@@ -126,6 +126,36 @@ test("sign-in requires an approved user, never an organization; removed users ca
   assert.equal(((await write.json()) as { error: { code: string } }).error.code, "not_allowed");
 });
 
+test("the archive-only filter reaches the backend unchanged", async () => {
+  const fake = fakeSource();
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  await fetch(`${base}/api/lists?q=Archive&page=2&pageSize=1&archivedOnly=1`, { headers: authed() });
+  assert.equal(fake.calls[0]!.url, "https://sourcing.example.test/api/v1/internal-sourcing/lists?q=Archive&page=2&pageSize=1&archivedOnly=1");
+});
+
+test("sample mode keeps active and archived lists separate, with accurate page totals after restore", async () => {
+  const source = createMockSource();
+  const first = await source.createList({ name: "Archive regression - first" });
+  const second = await source.createList({ name: "Archive regression - second" });
+  const active = await source.createList({ name: "Archive regression - active" });
+  await source.archiveList(first.id, true);
+  await source.archiveList(second.id, true);
+  const page1 = await source.searchLists({ q: "Archive regression", archivedOnly: true, pageSize: 1 });
+  const page2 = await source.searchLists({ q: "Archive regression", archivedOnly: true, pageSize: 1, page: 2 });
+  assert.equal(page1.total, 2);
+  assert.equal(page2.total, 2);
+  assert.deepEqual(new Set([...page1.lists, ...page2.lists].map((l) => l.id)), new Set([first.id, second.id]));
+  assert.deepEqual((await source.searchLists({ q: "Archive regression" })).lists.map((l) => l.id), [active.id]);
+  assert.equal((await source.searchLists({ q: "Archive regression", includeArchived: true })).total, 3);
+  assert.equal((await source.searchLists({ q: "Archive regression", archivedOnly: true, includeArchived: true })).total, 2);
+  await source.archiveList(first.id, false);
+  assert.equal((await source.searchLists({ q: "Archive regression", archivedOnly: true })).total, 1);
+  assert.equal((await source.searchLists({ q: "Archive regression" })).total, 2);
+  await source.removeList(second.id);
+  assert.equal((await source.searchLists({ q: "Archive regression", archivedOnly: true })).total, 0);
+  assert.equal((await source.searchLists({ q: "Archive regression", includeArchived: true })).total, 2);
+});
+
 test("each UI endpoint calls exactly one source endpoint, with the server-held key and the signed-in user as attribution", async () => {
   const fake = fakeSource((r) => (r.url.includes("/export") ? { status: 200, body: "﻿email,first_name\r\n,Ana\r\n", headers: { "x-export-count": "1", "content-disposition": 'attachment; filename="brand-a-all-2026-10-28.csv"' } } : { status: 200, body: { ok: true } }));
   const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));

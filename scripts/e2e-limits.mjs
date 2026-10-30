@@ -43,13 +43,16 @@ const freshMeta = () => page.unroute("**/api/meta");
 
 async function newDraft(name) {
   await page.goto(base);
-  await page.getByRole("button", { name: "New sourcing list" }).click();
+  await page.getByRole("button", { name: "New sourcing list" }).first().click();
   await page.getByLabel("List name", { exact: true }).fill(name);
   await page.getByRole("button", { name: "Create list" }).click();
-  await page.getByRole("heading", { name: "Creator criteria" }).waitFor();
+  await page.getByRole("heading", { name: "Define your ideal creators" }).waitFor();
   await page.getByRole("checkbox", { name: "Instagram" }).check();
   await page.getByLabel("Niche / search query").fill("skincare routines");
-  return page.url().split("/lists/")[1];
+  const id = new URL(page.url()).pathname.split("/lists/")[1];
+  await page.getByRole("button", { name: "Continue to exclusions" }).click();
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  return id;
 }
 const target = () => page.getByLabel("New qualifying creators to find");
 const saved = () => page.getByText("Saved", { exact: true }).waitFor();
@@ -67,8 +70,7 @@ try {
   await page.getByText(`At most ${M} new creators per search`).first().waitFor();
   await saved();
   assert.equal((await apiGet(`/lists/${first}`)).targetCount, M + 1, "the over-limit count is saved as entered, not trimmed");
-  await page.getByRole("button", { name: "Find creators" }).click();
-  await page.waitForTimeout(500);
+  assert.ok(await page.getByRole("button", { name: "Find creators" }).isDisabled());
   assert.equal((await apiGet(`/lists/${first}`)).operations.length, 0, "an over-limit count starts nothing");
   await page.screenshot({ path: join(shots, "limits-1-initial-over.png"), fullPage: true });
   await target().fill(String(M));

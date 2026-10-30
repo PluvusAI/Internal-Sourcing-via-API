@@ -107,6 +107,7 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
           ...(numQ(req.query["pageSize"]) !== undefined ? { pageSize: numQ(req.query["pageSize"])! } : {}),
           eligible: boolQ(req.query["eligible"]),
           includeArchived: boolQ(req.query["includeArchived"]),
+          archivedOnly: boolQ(req.query["archivedOnly"]),
         }),
       );
     }),

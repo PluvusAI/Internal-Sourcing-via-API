@@ -1,4 +1,4 @@
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, ClipboardList, Copy, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ListSummary } from "../../server/sourceClient";
@@ -8,7 +8,8 @@ import { ImportDialog } from "../components/ImportDialog";
 import { RemoveListAction } from "../components/CreatorDialogs";
 import { Notice, Pager, Spinner, StatusBadge, useDebounced } from "../components/ui";
 import { count, when } from "../lib/format";
-import { linkHandler, setParams, useLocation, useScrollRestoration } from "../router";
+import { useArchiveList } from "../lib/archive";
+import { linkHandler, listHref, setParams, useLocation, useScrollRestoration } from "../router";
 
 const PAGE = 25;
 
@@ -21,7 +22,6 @@ export function ListsHome() {
   const debounced = useDebounced(q, 250);
   const [dialog, setDialog] = useState<{ kind: "new" } | { kind: "import" } | { kind: "derive"; from: ListSummary } | null>(null);
   const searchId = useId();
-  const qc = useQueryClient();
 
   // The search lives in the URL: Back from a list returns to the same search and page. Only what
   // the user TYPED is written back, so a pending keystroke never overrides a Back navigation.
@@ -43,17 +43,19 @@ export function ListsHome() {
 
   const lists = useQuery({
     queryKey: ["lists", urlQ, page, showArchived],
-    queryFn: () => api.searchLists({ q: urlQ, page, pageSize: PAGE, includeArchived: showArchived }),
+    queryFn: () => api.searchLists({ q: urlQ, page, pageSize: PAGE, archivedOnly: showArchived }),
     placeholderData: keepPreviousData,
     refetchInterval: (query) => (query.state.data?.lists.some((l) => l.status === "queued" || l.status === "sourcing") ? 5000 : false),
   });
   const resultsSettling = (typed.current && q.trim() !== urlQ) || lists.isPlaceholderData;
   useScrollRestoration(Boolean(lists.data) && !resultsSettling, href);
 
-  const archive = useMutation({
-    mutationFn: (v: { id: string; archived: boolean }) => api.archiveList(v.id, v.archived),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["lists"] }),
-  });
+  const archive = useArchiveList();
+  useEffect(() => {
+    if (!lists.data || lists.isPlaceholderData || lists.isFetching) return;
+    const last = Math.max(1, Math.ceil(lists.data.total / PAGE));
+    if (page > last) setParams({ page: last === 1 ? null : String(last) });
+  }, [lists.data, lists.isPlaceholderData, lists.isFetching, page]);
 
   // Search, page and archive filters share a query observer. Keep-previous-data must not leave
   // old rows actionable under a new URL while the matching result is still loading.
@@ -64,7 +66,7 @@ export function ListsHome() {
       <div className="page-head">
         <div>
           <span className="eyebrow">Workspace / Creator sourcing</span>
-          <h1>Creator lists</h1>
+          <h1>{showArchived ? "Archived lists" : "Creator lists"}</h1>
           <p className="context">Imported rosters and sourced batches, named by brand. Pick any of them as exclusions when you source a new list.</p>
         </div>
         <div className="actions">
@@ -77,7 +79,23 @@ export function ListsHome() {
         </div>
       </div>
 
-      <div className="card">
+      <nav className="library-nav" aria-label="List library">
+        <button type="button" aria-current={!showArchived ? "page" : undefined} onClick={() => setParams({ archived: null, page: null }, { push: true })}>
+          <ClipboardList size={16} aria-hidden /> Active lists
+        </button>
+        <button type="button" aria-current={showArchived ? "page" : undefined} onClick={() => setParams({ archived: "1", page: null }, { push: true })}>
+          <Archive size={16} aria-hidden /> Archived
+        </button>
+      </nav>
+
+      {archive.data ? <div className="archive-feedback" role="status">
+        <span><strong>{archive.data.name}</strong> {archive.data.archivedAt ? "moved to archive." : "restored to active lists."}</span>
+        {archive.data.archivedAt ? <button type="button" className="link-btn" disabled={archive.isPending} onClick={() => archive.mutate({ id: archive.data!.id, archived: false })}>Undo</button> : null}
+        {archive.data.archivedAt && !showArchived ? <button type="button" className="link-btn" onClick={() => setParams({ archived: "1", page: null }, { push: true })}>View archive</button> : null}
+        <button type="button" className="btn btn-sm btn-ghost" onClick={() => archive.reset()} aria-label="Dismiss archive notification">Dismiss</button>
+      </div> : null}
+
+      <div className="card library-card">
         <div className="toolbar">
           <div className="search">
             <Search size={16} aria-hidden />
@@ -90,10 +108,6 @@ export function ListsHome() {
             {data ? `${count(data.total)} ${data.total === 1 ? "list" : "lists"}${urlQ ? ` match “${urlQ}”` : ""}` : ""}
           </span>
           {lists.isFetching && data ? <Spinner label="Refreshing" /> : null}
-          <span className="toolbar-spacer" />
-          <label className="inline small">
-            <input type="checkbox" className="checkbox" checked={showArchived} onChange={(e) => setParams({ archived: e.target.checked ? "1" : null, page: null })} /> Show archived
-          </label>
         </div>
 
         {lists.isLoading || resultsSettling ? (
@@ -115,6 +129,13 @@ export function ListsHome() {
               <button type="button" className="btn" onClick={() => setParams({ q: null, page: null })}>
                 Clear search
               </button>
+            </div>
+          ) : showArchived ? (
+            <div className="empty empty-state">
+              <Archive size={28} aria-hidden />
+              <strong>No archived lists</strong>
+              <span>Lists you archive appear here. You can restore them at any time.</span>
+              <button type="button" className="btn" onClick={() => setParams({ archived: null, page: null }, { push: true })}>Back to active lists</button>
             </div>
           ) : (
             <div className="empty empty-state">
@@ -148,7 +169,7 @@ export function ListsHome() {
                   {data.lists.map((l) => (
                     <tr key={l.id}>
                       <td className="name" data-label="Name">
-                        <a href={`/lists/${l.id}`} onClick={linkHandler(`/lists/${l.id}`)}>
+                        <a href={listHref(l.id)} onClick={linkHandler(listHref(l.id))}>
                           {l.name}
                         </a>
                         {l.archivedAt ? <div className="cell-sub">Archived</div> : null}
@@ -166,23 +187,24 @@ export function ListsHome() {
                       <td className="muted" data-label="Updated">{when(l.updatedAt)}</td>
                       <td className="row-actions">
                         <div className="actions">
-                          <a className="btn btn-sm" href={`/lists/${l.id}`} onClick={linkHandler(`/lists/${l.id}`)}>
+                          <a className="btn btn-sm" href={listHref(l.id)} onClick={linkHandler(listHref(l.id))} aria-label={`Open ${l.name}`}>
                             Open
                           </a>
                           {l.kind === "sourced" && l.status !== "draft" ? (
                             <button type="button" className="btn btn-sm btn-ghost" onClick={() => setDialog({ kind: "derive", from: l })} aria-label={`New list using criteria from ${l.name}`} title="New list using these criteria">
-                              <Copy size={14} aria-hidden /> <span className="label-desktop">New list using these criteria</span><span className="label-mobile">Use criteria</span>
+                              <Copy size={14} aria-hidden /> Use criteria
                             </button>
                           ) : null}
                           <button
                             type="button"
-                            className="btn btn-sm btn-ghost icon-btn"
-                            aria-label={l.archivedAt ? `Unarchive ${l.name}` : `Archive ${l.name}`}
-                            title={l.archivedAt ? "Unarchive" : "Archive (keeps its creators and every reference to it)"}
+                            className="btn btn-sm btn-ghost"
+                            aria-label={l.archivedAt ? `Restore ${l.name}` : `Archive ${l.name}`}
+                            title={l.archivedAt ? "Restore to active lists" : "Archive (keeps its creators and every reference to it)"}
                             disabled={archive.isPending}
                             onClick={() => archive.mutate({ id: l.id, archived: !l.archivedAt })}
                           >
-                            {l.archivedAt ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+                            {archive.isPending && archive.variables?.id === l.id ? <Spinner label={l.archivedAt ? "Restoring" : "Archiving"} /> : l.archivedAt ? <ArchiveRestore size={14} aria-hidden /> : <Archive size={14} aria-hidden />}
+                            {l.archivedAt ? "Restore" : "Archive"}
                           </button>
                           <RemoveListAction list={l} />
                         </div>

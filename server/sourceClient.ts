@@ -369,8 +369,8 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
 
   return {
     meta: () => call<SourceMeta>("GET", "/meta"),
-    searchLists: (p: { q?: string; page?: number; pageSize?: number; eligible?: boolean; includeArchived?: boolean } = {}) =>
-      call<ListSearchPage>("GET", `/lists${qs({ q: p.q, page: p.page, pageSize: p.pageSize, eligible: p.eligible, includeArchived: p.includeArchived })}`),
+    searchLists: (p: { q?: string; page?: number; pageSize?: number; eligible?: boolean; includeArchived?: boolean; archivedOnly?: boolean } = {}) =>
+      call<ListSearchPage>("GET", `/lists${qs({ q: p.q, page: p.page, pageSize: p.pageSize, eligible: p.eligible, includeArchived: p.includeArchived, archivedOnly: p.archivedOnly })}`),
     /** Every id the same search matches across all pages (what "Select all N matching lists" captures). */
     matchingListIds: (p: { q?: string; eligible?: boolean } = {}) => call<MatchingLists>("GET", `/lists/matching-ids${qs({ q: p.q, eligible: p.eligible })}`),
     createList: (

@@ -65,6 +65,34 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
 
   return (
     <div className="picker">
+      <div className="stack picker-selection">
+        <div className="section-head">
+          <span className="field-label">Selected exclusion lists</span>
+          {ids.length > 0 && !locked ? (
+            <button type="button" className="link-btn" onClick={() => onChange(new Map())}>
+              Clear selection
+            </button>
+          ) : null}
+        </div>
+        {ids.length > 0 ? (
+          <div className="chips" aria-label="Selected exclusion lists">
+            {[...selection.values()].map((l) => (
+              <span className="chip" key={l.id}>
+                {l.name} <span className="dim">· {count(l.memberCount)}</span>
+                {!locked ? (
+                  <button type="button" aria-label={`Remove ${l.name}`} onClick={() => onChange(toggle(selection, l))}>
+                    <X size={12} />
+                  </button>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <p className="summary-line" aria-live="polite">
+          {summaryText(ids.length, unique)}
+        </p>
+        {union.isError ? <Notice tone="danger">{union.error.message}</Notice> : null}
+      </div>
       {!locked ? (
         <>
           <div className="search" style={{ maxWidth: "none" }}>
@@ -100,7 +128,7 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
               ) : null}
               {results.isFetching ? <Spinner label="Searching" /> : null}
             </div>
-            {resultsSettling ? (
+            {resultsSettling || results.isLoading ? (
               <div className="picker-row"><Spinner label="Loading matching lists" /></div>
             ) : results.isError ? (
               <div className="picker-row">
@@ -120,7 +148,7 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
                 const checked = selection.has(l.id);
                 return (
                   <div key={l.id}>
-                    <div className="picker-row">
+                    <div className="picker-row" data-selected={checked}>
                       <label>
                         <input type="checkbox" className="checkbox" checked={checked} onChange={() => onChange(toggle(selection, { id: l.id, name: l.name, memberCount: l.memberCount }))} />
                         <span className="name">{l.name}</span>
@@ -147,34 +175,7 @@ export function ExclusionPicker({ selection, onChange, selfId, locked }: { selec
         </>
       ) : null}
 
-      <div className="stack">
-        <div className="section-head">
-          <span className="field-label">Selected exclusion lists</span>
-          {ids.length > 0 && !locked ? (
-            <button type="button" className="link-btn" onClick={() => onChange(new Map())}>
-              Clear selection
-            </button>
-          ) : null}
-        </div>
-        {ids.length > 0 ? (
-          <div className="chips" aria-label="Selected exclusion lists">
-            {[...selection.values()].map((l) => (
-              <span className="chip" key={l.id}>
-                {l.name} <span className="dim">· {count(l.memberCount)}</span>
-                {!locked ? (
-                  <button type="button" aria-label={`Remove ${l.name}`} onClick={() => onChange(toggle(selection, l))}>
-                    <X size={12} />
-                  </button>
-                ) : null}
-              </span>
-            ))}
-          </div>
-        ) : null}
-        <p className="summary-line" aria-live="polite">
-          {summaryText(ids.length, unique)}
-        </p>
-        {union.isError ? <Notice tone="danger">{union.error.message}</Notice> : null}
-      </div>
+
     </div>
   );
 }

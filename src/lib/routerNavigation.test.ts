@@ -95,6 +95,15 @@ test("blocked in-app and browser Back navigation can stay or resume without losi
     assert.equal(location.pathname, "/", "the unindexed Back can proceed after saving");
     assert.equal(position, 0);
     unblockUnindexed();
+
+    router.navigate("/?q=Brand+A&page=2&archived=1");
+    const firstLink = router.listHref("abcdefgh");
+    assert.equal(new URL(firstLink, "http://app.test").searchParams.get("from"), "/?q=Brand+A&page=2&archived=1");
+    router.navigate(firstLink);
+    assert.equal(new URL(router.listHref("ijklmnop"), "http://app.test").searchParams.get("from"), "/?q=Brand+A&page=2&archived=1", "derived lists keep the original library view");
+    assert.equal(router.libraryHref("//external.test/"), "/", "a copied return URL cannot navigate outside the app");
+    assert.equal(router.libraryHref("/lists/abcdefgh"), "/", "the return destination must be a library view");
+    assert.equal(router.libraryHref(null, "/?archived=1"), "/?archived=1", "direct archive links return to the archive view");
   } finally {
     Object.assign(globalThis, { window: previousWindow });
   }

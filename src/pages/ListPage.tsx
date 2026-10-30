@@ -1,33 +1,36 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Copy, Download, Pencil, Search, Sparkles } from "lucide-react";
+import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Download, ListFilter, Pencil, Search, ShieldBan, Sparkles, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
-import { CriteriaFormFields } from "../components/CriteriaForm";
+import { CRITERIA_ICONS, CriteriaFormFields, PLATFORM_ICONS } from "../components/CriteriaForm";
 import { ExportDialog, FindMoreDialog, NewListDialog } from "../components/Dialogs";
 import { ExclusionPicker } from "../components/ExclusionPicker";
 import { CreatorManagement } from "../components/CreatorManagement";
 import { RemoveListAction } from "../components/CreatorDialogs";
 import { Modal, Notice, Spinner, StatusBadge, errorText } from "../components/ui";
-import { applyPending, applySuggestion, criteriaSummary, draftFromForm, formFromDraft, formProblems, type CriteriaForm, type PendingSuggestion } from "../lib/criteria";
+import { PLATFORM_LABELS, applyPending, applySuggestion, criteriaSummary, draftFromForm, formFromDraft, formProblems, type CriteriaForm, type PendingSuggestion } from "../lib/criteria";
+import { useArchiveList } from "../lib/archive";
 import { count, isActive, pollMs, progressText, when } from "../lib/format";
 import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
-import { linkHandler, navigate, parseRoute, registerNavigationBlocker, type NavigationAttempt } from "../router";
+import { libraryHref, linkHandler, navigate, parseRoute, registerNavigationBlocker, setParams, useLocation, type NavigationAttempt } from "../router";
 
 export function ListPage({ id }: { id: string }) {
   const meta = useMeta();
+  const { params } = useLocation();
   const list = useQuery({
     queryKey: ["list", id],
     queryFn: () => api.getList(id),
     refetchInterval: (q) => pollMs(q.state.data?.operations.find((o) => o.id === q.state.data?.activeOperationId) ?? null),
   });
 
+  const returnHref = libraryHref(params.get("from"), list.data?.archivedAt ? "/?archived=1" : "/");
   const back = (
-    <a href="/" className="btn btn-ghost btn-sm" onClick={linkHandler("/")} style={{ marginBottom: 12 }}>
-      <ArrowLeft size={14} aria-hidden /> All lists
+    <a href={returnHref} className="btn btn-ghost btn-sm" onClick={linkHandler(returnHref)} style={{ marginBottom: 12 }}>
+      <ArrowLeft size={14} aria-hidden /> {returnHref.includes("archived=1") ? "Archived lists" : "All lists"}
     </a>
   );
   if (list.isLoading || meta.isLoading) return <div className="empty"><Spinner label="Loading list" /></div>;
@@ -46,7 +49,8 @@ export function ListPage({ id }: { id: string }) {
   return (
     <>
       {back}
-      {d.kind === "sourced" && !d.criteriaLocked && !d.archivedAt ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} />}
+      {d.archivedAt ? <ArchivedListBanner list={d} /> : null}
+      {d.kind === "sourced" && !d.criteriaLocked ? <DraftEditor key={d.id} list={d} meta={meta.data!} /> : <ListWorkspace list={d} />}
     </>
   );
 }
@@ -55,11 +59,30 @@ export function ListPage({ id }: { id: string }) {
 
 type SaveState = "saved" | "dirty" | "saving" | "failed" | "conflict";
 
+function ArchivedListBanner({ list }: { list: ListDetail }) {
+  const archive = useArchiveList();
+  return <div className="archived-list-banner">
+    <Archive size={20} aria-hidden />
+    <div className="stack"><strong>This list is archived</strong><span className="muted small">Its creators and references are saved. Restore it to continue sourcing.</span>{archive.isError ? <span className="error-text">{archive.error.message}</span> : null}</div>
+    <button type="button" className="btn" disabled={archive.isPending} onClick={() => archive.mutate({ id: list.id, archived: false })}>{archive.isPending ? <Spinner label="Restoring" /> : <ArchiveRestore size={16} aria-hidden />}Restore list</button>
+  </div>;
+}
+
 function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   const qc = useQueryClient();
   const uid = useId();
   const [name, setName] = useState(list.name);
   const [form, setForm] = useState<CriteriaForm>(() => formFromDraft(list.criteria));
+  const { params } = useLocation();
+  const step = params.get("step") === "2" ? 2 : params.get("step") === "3" ? 3 : 1;
+  const stepHeading = useRef<HTMLHeadingElement>(null);
+  const previousStep = useRef(step);
+  const goToStep = (next: number): void => setParams({ step: next === 1 ? null : String(next) }, { push: true });
+  useEffect(() => {
+    if (previousStep.current === step) return;
+    previousStep.current = step;
+    stepHeading.current?.focus();
+  }, [step]);
   const [target, setTarget] = useState<number | null>(list.targetCount);
   const [selection, setSelection] = useState<Selection>(() => fromIds(list.excludedListIds, list.excludedLists));
   const [save, setSave] = useState<SaveState>("saved");
@@ -158,6 +181,17 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
   const [brief, setBrief] = useState("");
   const [filled, setFilled] = useState<string[]>([]);
   const [pending, setPending] = useState<PendingSuggestion[]>([]);
+  const changeForm = (next: CriteriaForm): void => {
+    const labels: Record<string, keyof CriteriaForm> = { "Niche / search query": "niche", "Ideal creator": "idealCreator", "Topic keywords": "topicKeywords", "Fit restrictions": "exclusions", "Creator locations": "creatorLocations", "Profile languages": "profileLanguages" };
+    setFilled((values) => values.filter((label) => {
+      const field = labels[label];
+      if (field) return JSON.stringify(form[field]) === JSON.stringify(next[field]);
+      const platform = form.platforms.find((p) => `${PLATFORM_LABELS[p.platform]} followers` === label);
+      const updated = next.platforms.find((p) => p.platform === platform?.platform);
+      return platform && updated && platform.followersMin === updated.followersMin && platform.followersMax === updated.followersMax;
+    }));
+    setForm(next);
+  };
   const assistant = useQuery({ queryKey: ["suggestion-status"], queryFn: api.suggestionStatus, staleTime: 30_000 });
   const currentForm = useRef(form);
   currentForm.current = form;
@@ -199,8 +233,8 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
     },
   });
   const startIssues = start.error instanceof ApiError ? ((start.error.details["issues"] as Array<{ path: string; message: string }> | undefined) ?? []) : [];
-  const canStart = save === "saved" && problemCount === 0 && !start.isPending;
-  const archiveDraft = useMutation({ mutationFn: () => api.archiveList(list.id, true), onSuccess: (d) => { qc.setQueryData(["list", list.id], d); void qc.invalidateQueries({ queryKey: ["lists"] }); } });
+  const canStart = save === "saved" && problemCount === 0 && !start.isPending && !list.archivedAt;
+  const archiveDraft = useArchiveList();
 
   return (
     <>
@@ -208,10 +242,16 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
         <div className="field" style={{ flex: 1, maxWidth: 560 }}>
           <span className="eyebrow">New sourcing list / Draft</span>
           <label htmlFor={`${uid}-name`}>List name</label>
-          <input id={`${uid}-name`} className="input" style={{ fontSize: 18, fontWeight: 700 }} value={name} maxLength={120} onChange={(e) => setName(e.target.value)} aria-invalid={!name.trim()} />
+          <input id={`${uid}-name`} className="input" style={{ fontSize: 18, fontWeight: 700 }} value={name} disabled={Boolean(list.archivedAt)} maxLength={120} onChange={(e) => setName(e.target.value)} aria-invalid={!name.trim()} />
           {!name.trim() ? <span className="error">A list name is required.</span> : <span className="hint">Draft · new sourcing list</span>}
         </div>
-        <div className="actions"><SaveIndicator state={save} onRetry={() => void flush()} /><button type="button" className="btn btn-sm" disabled={save !== "saved" || archiveDraft.isPending || start.isPending} onClick={() => archiveDraft.mutate()}>Archive draft</button><RemoveListAction list={list} onRemoved={() => { savedKey.current = latestKey.current; inFlight.current = false; navigate("/"); }} /></div>
+        <div className="actions">
+          <SaveIndicator state={save} onRetry={() => void flush()} />
+          {!list.archivedAt ? <button type="button" className="btn btn-sm" disabled={save !== "saved" || archiveDraft.isPending || start.isPending} onClick={() => archiveDraft.mutate({ id: list.id, archived: true })}>
+            {archiveDraft.isPending ? <Spinner label="Archiving" /> : <Archive size={14} aria-hidden />} Archive draft
+          </button> : null}
+          <RemoveListAction list={list} onRemoved={() => { savedKey.current = latestKey.current; inFlight.current = false; navigate(libraryHref(params.get("from"))); }} />
+        </div>
       </div>
       {archiveDraft.isError ? <Notice tone="danger">{errorText(archiveDraft.error)}</Notice> : null}
       {save === "conflict" ? (
@@ -220,14 +260,35 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
         </Notice>
       ) : null}
 
-      <div className="layout-2" style={{ marginTop: 16 }}>
-        <div className="card card-pad section">
-          <div className="step-heading">
-            <span className="step-index" aria-hidden>01</span>
-            <div><h2>Define your ideal creators</h2><p className="muted small">Set the search and fit criteria for this batch.</p></div>
+      <div className="sourcing-setup">
+        <nav className="setup-nav" aria-label="Sourcing setup steps">
+          <ol>
+            {([{ number: 1, label: "Criteria", detail: "Define your creators", icon: ListFilter }, { number: 2, label: "Exclusions", detail: "Avoid overlap", icon: ShieldBan }, { number: 3, label: "Review & search", detail: "Check and launch", icon: Search }] as const).map((item) => <li key={item.number}>
+              <button type="button" onClick={() => goToStep(item.number)} aria-current={step === item.number ? "step" : undefined}>
+                <span className="setup-nav-index" aria-hidden>{step > item.number ? <Check size={16} /> : item.number}</span>
+                <span><strong>{item.label}</strong><span className="small">{item.detail}</span></span>
+                <item.icon size={17} aria-hidden className="setup-nav-icon" />
+              </button>
+            </li>)}
+          </ol>
+          <div className="setup-autosave"><CheckCircle2 size={15} aria-hidden /><span>Your draft saves as you go.</span></div>
+        </nav>
+
+        <fieldset className="setup-panel card" disabled={Boolean(list.archivedAt) || start.isPending}>
+          <div className="setup-panel-heading">
+            <span className="eyebrow">Step {step} of 3</span>
+            <h2 ref={stepHeading} tabIndex={-1}>{step === 1 ? "Define your ideal creators" : step === 2 ? "Exclude creators from these lists" : "Review & start the search"}</h2>
+            <p className="muted">{step === 1 ? "Choose where to search and what makes a creator a fit." : step === 2 ? "Choose saved lists to skip. This step is optional." : "Review this batch before your criteria are fixed."}</p>
           </div>
+
+          <div hidden={step !== 1}>
+            <div className="setup-panel-body">
+              <CriteriaFormFields form={form} onChange={changeForm} problems={problems} showProblems={tried} suggested={filled} suggestion={
           <section className="assistant-card" aria-label="AI criteria assistant">
-            <div className="inline" style={{ fontWeight: 600 }}><Sparkles size={16} aria-hidden />Turn your brief into criteria <span className="badge">Optional</span></div>
+            <div className="inline" style={{ fontWeight: 600 }}>
+              <Sparkles size={16} aria-hidden /> Turn your brief into criteria
+              <span className="badge">Optional</span>
+            </div>
             <div className="stack" style={{ marginTop: 8 }}>
               <div className="field">
                 <label htmlFor={`${uid}-brief`}>Short brief</label>
@@ -246,9 +307,10 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
               {suggest.data && !suggest.data.ok ? <Notice tone="warning">{suggest.data.message}</Notice> : null}
               {filled.length > 0 ? <Notice tone="success">Filled: {filled.join(", ")}. Review them below.</Notice> : null}
               {pending.map((p) => (
-                <div className="notice" key={p.field}>
+                <div className="suggestion-review" key={p.field}>
                   <div className="stack" style={{ gap: 2, flex: 1 }}>
-                    <strong>{p.label}: you already entered a value.</strong>
+                    <strong className="inline">{(() => { const Icon = CRITERIA_ICONS[p.field] ?? Sparkles; return <Icon size={15} aria-hidden />; })()}{p.label}</strong>
+                    <span className="muted small">Your current value is kept.</span>
                     <span className="muted">Suggested: {Array.isArray(p.value) ? p.value.join(", ") : p.value}</span>
                   </div>
                   <button
@@ -257,66 +319,81 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
                     onClick={() => {
                       setForm(applyPending(form, p));
                       setPending(pending.filter((x) => x !== p));
+                      setFilled((values) => [...new Set([...values, p.label])]);
                     }}
                   >
-                    Use suggestion
+                    <Check size={14} aria-hidden /> Use suggestion
                   </button>
+                  <button type="button" className="btn btn-sm btn-ghost" onClick={() => setPending(pending.filter((x) => x !== p))}>Keep mine</button>
                 </div>
               ))}
             </div>
           </section>
-          <CriteriaFormFields form={form} onChange={setForm} problems={problems} showProblems={tried} showTargetProblem={overLimit} targetCount={target} onTargetCount={setTarget} maxTarget={meta.maxTargetCount} />
-        </div>
+              } />
+              {tried && Object.keys(problems).some((key) => key !== "targetCount") ? <Notice tone="warning">Fix the highlighted criteria to continue.</Notice> : null}
+            </div>
+            <div className="setup-panel-footer">
+              <span className="muted small">Platforms and a niche are required.</span>
+              <button type="button" className="btn btn-primary" onClick={() => {
+                setTried(true);
+                if (name.trim() && Object.keys(problems).every((key) => key === "targetCount")) goToStep(2);
+                else window.requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+              }}>Continue to exclusions <ArrowRight size={16} aria-hidden /></button>
+            </div>
+          </div>
 
-        <div className="section">
-          <div className="card card-pad section">
-            <div className="step-heading">
-              <span className="step-index" aria-hidden>02</span>
-              <div><h2>Exclude creators from these lists</h2><p className="muted small">Avoid overlap with rosters already in your workspace.</p></div>
+          <div hidden={step !== 2}>
+            <div className="setup-panel-body">
+              <Notice tone="neutral">Only the lists you select are excluded. Creators that appear on several selected lists are counted once.</Notice>
+              <ExclusionPicker selection={selection} onChange={setSelection} selfId={list.id} locked={Boolean(list.archivedAt)} />
             </div>
-            <p className="muted small">Creators saved on the lists you select (counted once even if they appear in several), and every creator already on this list, are skipped. Lists you do not select are not excluded, whatever their name.</p>
-            <ExclusionPicker selection={selection} onChange={setSelection} selfId={list.id} locked={false} />
-          </div>
-          <div className="card card-pad section">
-            <div className="step-heading">
-              <span className="step-index" aria-hidden>03</span>
-              <div><h2>Start the search</h2><p className="muted small">Your criteria are fixed once the search starts.</p></div>
-            </div>
-            <p className="muted small">
-              Starts one search for up to {target ? count(target) : "the requested number of"} new qualifying creators. It runs on the sourcing service; you can leave this page and come back.
-            </p>
-            {start.isError ? (
-              <Notice tone="danger" title="The search did not start">
-                {start.error.message}
-                {startIssues.length > 0 ? (
-                  <ul>
-                    {startIssues.map((i) => (
-                      <li key={i.path}>
-                        {i.path}: {i.message}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-              </Notice>
-            ) : null}
-            {tried && problemCount > 0 ? <Notice tone="warning">Fix the highlighted criteria first.</Notice> : null}
-            {save === "failed" ? <Notice tone="danger">The draft is not saved, so the search cannot start. Retry saving first.</Notice> : null}
-            <div className="actions">
-              <button
-                type="button"
-                className="btn btn-primary"
-                disabled={!canStart && !(problemCount > 0 && !tried)}
-                onClick={() => {
-                  setTried(true);
-                  if (canStart) start.mutate();
-                }}
-              >
-                {start.isPending ? <Spinner label="Starting" /> : <Search size={16} aria-hidden />} Find creators
-              </button>
-              {save === "dirty" || save === "saving" ? <span className="muted small">Waiting for the draft to save…</span> : null}
+            <div className="setup-panel-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => goToStep(1)}><ArrowLeft size={16} aria-hidden />Back to criteria</button>
+              <button type="button" className="btn btn-primary" onClick={() => goToStep(3)}>Continue to review <ArrowRight size={16} aria-hidden /></button>
             </div>
           </div>
-        </div>
+
+          <div hidden={step !== 3}>
+            <div className="setup-panel-body">
+              <section className="review-section" aria-label="Criteria summary">
+                <div className="section-head"><h3 className="inline"><ListFilter size={16} aria-hidden />Search criteria</h3><button type="button" className="link-btn" onClick={() => goToStep(1)}>Edit criteria</button></div>
+                <p className="review-niche">{form.niche.trim() || "Add a niche in step 1"}</p>
+                <div className="review-platforms">{form.platforms.map((p) => { const Icon = PLATFORM_ICONS[p.platform]; return <div className="review-platform" key={p.platform}><strong className="inline"><Icon size={15} aria-hidden />{PLATFORM_LABELS[p.platform]}</strong><span>{rangeLabel(p.followersMin, p.followersMax, "followers")}</span><span>{rangeLabel(p.engagementMin, p.engagementMax, "% engagement")}</span></div>; })}</div>
+                <dl className="review-details">
+                  {form.idealCreator ? <><dt>Ideal creator</dt><dd>{form.idealCreator}</dd></> : null}
+                  {form.topicKeywords.length ? <><dt>Topics</dt><dd>{form.topicKeywords.join(", ")}</dd></> : null}
+                  {form.exclusions.length ? <><dt>Fit restrictions</dt><dd>{form.exclusions.join(", ")}</dd></> : null}
+                  {form.creatorLocations.length ? <><dt>Based in</dt><dd>{form.creatorLocations.join(", ")}</dd></> : null}
+                  {form.profileLanguages.length ? <><dt>Profile language</dt><dd>{form.profileLanguages.join(", ")}</dd></> : null}
+                  {form.brandName ? <><dt>Brand</dt><dd>{[form.brandName, form.brandProduct, form.brandDescription].filter(Boolean).join(" · ")}</dd></> : null}
+                </dl>
+              </section>
+              <section className="review-section" aria-label="Exclusions summary">
+                <div className="section-head"><h3 className="inline"><ShieldBan size={16} aria-hidden />Exclusion lists</h3><button type="button" className="link-btn" onClick={() => goToStep(2)}>Edit exclusions</button></div>
+                <p className="muted">{selection.size ? [...selection.values()].map((l) => l.name).join(", ") : "No lists selected. Only creators already on this list are skipped."}</p>
+              </section>
+              <div className="field target-field">
+                <label htmlFor={`${uid}-targetCount`} className="inline"><Users size={16} aria-hidden />New qualifying creators to find</label>
+                <div className="target-input-row"><input id={`${uid}-targetCount`} className="input" inputMode="numeric" value={target ?? ""} aria-invalid={(tried || overLimit) && problems["targetCount"] ? true : undefined} aria-describedby={`${uid}-target-hint${(tried || overLimit) && problems["targetCount"] ? ` ${uid}-target-error` : ""}`} onChange={(e) => setTarget(/^\d+$/.test(e.target.value) ? Number(e.target.value) : e.target.value === "" ? null : target)} /><span className="muted small">Up to {count(meta.maxTargetCount)} per search</span></div>
+                <span className="hint" id={`${uid}-target-hint`}>Fewer may qualify; the list will say why. Use Find more to add another batch later.</span>
+                {(tried || overLimit) && problems["targetCount"] ? <span className="error" id={`${uid}-target-error`}>{problems["targetCount"]}</span> : null}
+              </div>
+              <Notice tone="neutral">Your criteria are fixed when this search starts. You can leave and return while it runs.</Notice>
+              {start.isError ? <Notice tone="danger" title="The search did not start">{start.error.message}{startIssues.length ? <ul>{startIssues.map((i) => <li key={i.path}>{i.path}: {i.message}</li>)}</ul> : null}</Notice> : null}
+              {tried && problemCount > 0 ? <Notice tone="warning">Fix the highlighted criteria first.{Object.keys(problems).some((key) => key !== "targetCount") ? <button type="button" className="link-btn" onClick={() => goToStep(1)}>Review criteria</button> : null}</Notice> : null}
+              {save === "failed" ? <Notice tone="danger">The draft is not saved, so the search cannot start. Retry saving first.</Notice> : null}
+            </div>
+            <div className="setup-panel-footer">
+              <button type="button" className="btn btn-ghost" onClick={() => goToStep(2)}><ArrowLeft size={16} aria-hidden />Back to exclusions</button>
+              <div className="actions">
+                {save === "dirty" || save === "saving" ? <span className="muted small">Saving your draft…</span> : null}
+                <button type="button" className="btn btn-primary" disabled={!canStart && !(problemCount > 0 && !tried && !overLimit && !list.archivedAt)} onClick={() => { setTried(true); if (canStart) start.mutate(); }}>
+                  {start.isPending ? <Spinner label="Starting" /> : <Search size={16} aria-hidden />} Find creators
+                </button>
+              </div>
+            </div>
+          </div>
+        </fieldset>
       </div>
       <CreatorManagement list={list} />
       {leaveAttempt ? (
@@ -359,10 +436,17 @@ function SaveIndicator({ state, onRetry }: { state: SaveState; onRetry: () => vo
   return <span className="saving" aria-live="polite">Saved</span>;
 }
 
+function rangeLabel(min: string, max: string, unit: string): string {
+  if (!min.trim() && !max.trim()) return `Any ${unit}`;
+  const format = (value: string): string => Number.isFinite(Number(value)) ? count(Number(value)) : value;
+  return `${min.trim() && max.trim() ? `${format(min)}–${format(max)}` : min.trim() ? `${format(min)}+` : `Up to ${format(max)}`} ${unit}`;
+}
+
 // ─────────────────────────────────────────────────────────────── workspace
 
 function ListWorkspace({ list }: { list: ListDetail }) {
   const qc = useQueryClient();
+  const { params } = useLocation();
   const [dialog, setDialog] = useState<"export" | "more" | "derive" | null>(null);
   const [selected, setSelected] = useState({ n: 0, total: list.memberCount });
   const onSelectionCount = useCallback((n: number, total: number) => setSelected({ n, total }), []);
@@ -379,7 +463,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
     wasActive.current = active;
   }, [active, list.id, qc]);
 
-  const archive = useMutation({ mutationFn: (archived: boolean) => api.archiveList(list.id, archived), onSuccess: (d) => qc.setQueryData(["list", list.id], d) });
+  const archive = useArchiveList();
 
   return (
     <>
@@ -410,13 +494,14 @@ function ListWorkspace({ list }: { list: ListDetail }) {
           <button type="button" className="btn btn-primary" disabled={list.memberCount === 0} onClick={() => setDialog("export")}>
             <Download size={16} aria-hidden /> Export{selected.n > 0 ? ` selected (${count(selected.n)})` : ` all (${count(list.memberCount)})`}
           </button>
-          <button type="button" className="btn btn-ghost" disabled={archive.isPending} onClick={() => archive.mutate(!list.archivedAt)}>
-            {list.archivedAt ? "Restore to edit" : "Archive"}
-          </button>
-          <RemoveListAction list={list} onRemoved={() => navigate("/")} />
+          {!list.archivedAt ? <button type="button" className="btn btn-ghost" disabled={archive.isPending} onClick={() => archive.mutate({ id: list.id, archived: true })}>
+            {archive.isPending ? <Spinner label="Archiving" /> : <Archive size={16} aria-hidden />} Archive
+          </button> : null}
+          <RemoveListAction list={list} onRemoved={() => navigate(libraryHref(params.get("from")))} />
         </div>
       </div>
 
+      {archive.isError ? <Notice tone="danger">{archive.error.message}</Notice> : null}
       {list.kind === "sourced" ? <SourcedSummary list={list} latest={latest} /> : <ImportSummary list={list} />}
 
       {list.archivedAt ? <Notice tone="info">This list is archived. Restore it to edit creators{list.criteriaLocked ? " or continue sourcing" : " and criteria"}. Existing creator data and exclusion links are kept.</Notice> : null}
