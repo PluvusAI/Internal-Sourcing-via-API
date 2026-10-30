@@ -1,3 +1,4 @@
+import { emailJobActive } from "../components/EmailLookup";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Download, ListFilter, Pencil, Search, ShieldBan, Sparkles, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -24,7 +25,7 @@ export function ListPage({ id }: { id: string }) {
   const list = useQuery({
     queryKey: ["list", id],
     queryFn: () => api.getList(id),
-    refetchInterval: (q) => pollMs(q.state.data?.operations.find((o) => o.id === q.state.data?.activeOperationId) ?? null),
+    refetchInterval: (q) => emailJobActive(q.state.data?.emailJob) ? 3000 : pollMs(q.state.data?.operations.find((o) => o.id === q.state.data?.activeOperationId) ?? null),
   });
 
   const returnHref = libraryHref(params.get("from"), list.data?.archivedAt ? "/?archived=1" : "/");
@@ -233,7 +234,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
     },
   });
   const startIssues = start.error instanceof ApiError ? ((start.error.details["issues"] as Array<{ path: string; message: string }> | undefined) ?? []) : [];
-  const canStart = save === "saved" && problemCount === 0 && !start.isPending && !list.archivedAt;
+  const canStart = !emailJobActive(list.emailJob) && save === "saved" && problemCount === 0 && !start.isPending && !list.archivedAt;
   const archiveDraft = useArchiveList();
 
   return (
@@ -247,7 +248,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
         </div>
         <div className="actions">
           <SaveIndicator state={save} onRetry={() => void flush()} />
-          {!list.archivedAt ? <button type="button" className="btn btn-sm" disabled={save !== "saved" || archiveDraft.isPending || start.isPending} onClick={() => archiveDraft.mutate({ id: list.id, archived: true })}>
+          {!list.archivedAt ? <button type="button" className="btn btn-sm" disabled={save !== "saved" || archiveDraft.isPending || start.isPending || emailJobActive(list.emailJob)} onClick={() => archiveDraft.mutate({ id: list.id, archived: true })}>
             {archiveDraft.isPending ? <Spinner label="Archiving" /> : <Archive size={14} aria-hidden />} Archive draft
           </button> : null}
           <RemoveListAction list={list} onRemoved={() => { savedKey.current = latestKey.current; inFlight.current = false; navigate(libraryHref(params.get("from"))); }} />
@@ -451,7 +452,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
   const [selected, setSelected] = useState({ n: 0, total: list.memberCount });
   const onSelectionCount = useCallback((n: number, total: number) => setSelected({ n, total }), []);
   const latest: OperationView | null = list.operations.at(-1) ?? null;
-  const active = isActive(list.status);
+  const active = isActive(list.status) || emailJobActive(list.emailJob);
   const refresh = (): void => {
     void qc.invalidateQueries({ queryKey: ["list", list.id] });
     void qc.invalidateQueries({ queryKey: ["members", list.id] });
@@ -483,7 +484,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
         <div className="actions">
           {list.kind === "sourced" && list.criteriaLocked ? (
             <>
-              <button type="button" className="btn" disabled={active || Boolean(list.archivedAt)} onClick={() => setDialog("more")} title={active ? "Wait for the current search to finish" : undefined}>
+              <button type="button" className="btn" disabled={active || Boolean(list.archivedAt)} onClick={() => setDialog("more")} title={active ? "Wait for the current job to finish" : undefined}>
                 <Search size={16} aria-hidden /> Find more
               </button>
               <button type="button" className="btn" onClick={() => setDialog("derive")}>
@@ -494,7 +495,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
           <button type="button" className="btn btn-primary" disabled={list.memberCount === 0} onClick={() => setDialog("export")}>
             <Download size={16} aria-hidden /> Export{selected.n > 0 ? ` selected (${count(selected.n)})` : ` all (${count(list.memberCount)})`}
           </button>
-          {!list.archivedAt ? <button type="button" className="btn btn-ghost" disabled={archive.isPending} onClick={() => archive.mutate({ id: list.id, archived: true })}>
+          {!list.archivedAt ? <button type="button" className="btn btn-ghost" disabled={archive.isPending || emailJobActive(list.emailJob)} onClick={() => archive.mutate({ id: list.id, archived: true })}>
             {archive.isPending ? <Spinner label="Archiving" /> : <Archive size={16} aria-hidden />} Archive
           </button> : null}
           <RemoveListAction list={list} onRemoved={() => navigate(libraryHref(params.get("from")))} />

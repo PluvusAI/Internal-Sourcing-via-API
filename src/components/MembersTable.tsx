@@ -1,7 +1,8 @@
+import { EmailCell } from "./EmailLookup";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, Pencil, Trash2, Users } from "lucide-react";
+import { Download, Mail, ExternalLink, Pencil, Trash2, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import type { MemberView } from "../../server/sourceClient";
+import type { EmailScope, MemberView } from "../../server/sourceClient";
 import { api } from "../api";
 import { PLATFORM_LABELS } from "../lib/criteria";
 import { count, percent, when } from "../lib/format";
@@ -16,12 +17,12 @@ const platformLabel = (p: string | null): string => (p && p in PLATFORM_LABELS ?
  * by row id), so it survives paging, refresh, another session and Find more. "Select this page"
  * and "Select all N saved creators" are different actions with different labels.
  */
-export function MembersTable({ listId, kind, live, editable = true, listName = "this list", onSelectionCount, onExport, onMessage }: { listId: string; kind: "imported" | "sourced"; live: boolean; editable?: boolean; listName?: string; onSelectionCount: (n: number, total: number) => void; onExport: (n: number, total: number) => void; onMessage?: (message: string) => void }) {
+export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmails, editable = true, listName = "this list", onSelectionCount, onExport, onMessage }: { listId: string; kind: "imported" | "sourced"; live: boolean; emailBusy?: boolean; onFindEmails?: (scope: EmailScope | { scope: "selection" }) => void; editable?: boolean; listName?: string; onSelectionCount: (n: number, total: number) => void; onExport: (n: number, total: number) => void; onMessage?: (message: string) => void }) {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<MemberView | null>(null);
   const [dialog, setDialog] = useState<{ kind: "edit"; member: MemberView } | { kind: "remove"; member: MemberView | null } | null>(null);
   const qc = useQueryClient();
-  const q = useQuery({ queryKey: ["members", listId, page], queryFn: () => api.members(listId, { page, pageSize: PAGE }), placeholderData: keepPreviousData, refetchInterval: live ? 4000 : false });
+  const q = useQuery({ queryKey: ["members", listId, page], queryFn: () => api.members(listId, { page, pageSize: PAGE }), placeholderData: keepPreviousData, refetchInterval: live || emailBusy ? 3000 : false });
   // A page change may temporarily carry the previous page's data. Never make those rows
   // selectable under the new page number.
   const data = q.isPlaceholderData ? undefined : q.data;
@@ -81,6 +82,7 @@ export function MembersTable({ listId, kind, live, editable = true, listName = "
           <span>{count(data.selectedCount)} of {count(data.total)} selected{allSelected ? " (all saved creators, across every page)" : ""}.</span>
           <div className="actions">
             <button type="button" className="btn btn-sm btn-primary" disabled={select.isPending} onClick={() => onExport(data.selectedCount, data.total)}><Download size={14} aria-hidden /> Export selected</button>
+            {editable && onFindEmails ? <button type="button" className="btn btn-sm" disabled={select.isPending} onClick={() => onFindEmails({ scope: "selection" })}><Mail size={14} aria-hidden />Find selected emails</button> : null}
             {editable && !live ? <button type="button" className="btn btn-sm btn-danger" disabled={select.isPending} onClick={() => setDialog({ kind: "remove", member: null })}><Trash2 size={14} aria-hidden />Remove selected</button> : null}
             <button type="button" className="link-btn" disabled={select.isPending} onClick={() => select.mutate({ selected: false, all: true })}>
               Clear selection
@@ -110,7 +112,8 @@ export function MembersTable({ listId, kind, live, editable = true, listName = "
               <th>Profile</th>
               <th className="num">Followers</th>
               <th className="num">Engagement</th>
-              <th>{kind === "sourced" ? "Why they fit" : "Email (provided)"}</th>
+              <th>Email</th>
+              {kind === "sourced" ? <th>Why they fit</th> : null}
               {editable && !live ? <th><span className="sr-only">Creator actions</span></th> : null}
             </tr>
           </thead>
@@ -141,15 +144,16 @@ export function MembersTable({ listId, kind, live, editable = true, listName = "
                 </td>
                 <td className="num" data-label="Followers">{count(m.followers)}</td>
                 <td className="num" data-label="Engagement">{percent(m.engagementPercent)}</td>
-                <td className="reason" data-label={kind === "sourced" ? "Why they fit" : "Email (provided)"}>{kind === "sourced" ? m.source === "import" ? "Added manually" : m.reason ?? "—" : m.email ?? <span className="dim">—</span>}</td>
-                {editable && !live ? <td className="row-actions" data-label="Actions"><div className="actions"><button type="button" className="btn btn-sm btn-ghost" aria-label={`Edit ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "edit", member: m })}><Pencil size={14} aria-hidden />Edit</button><button type="button" className="btn btn-sm btn-ghost btn-danger" aria-label={`Remove ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "remove", member: m })}><Trash2 size={14} aria-hidden />Remove</button></div></td> : null}
+                <td data-label="Email"><EmailCell member={m} /></td>
+                {kind === "sourced" ? <td className="reason" data-label="Why they fit"><span className="reason-copy">{m.source === "import" ? "Added manually" : m.reason ?? "—"}</span></td> : null}
+                {editable && !live ? <td className="row-actions" data-label="Actions"><div className="actions">{onFindEmails && !m.email ? <button type="button" className="btn btn-sm btn-ghost" aria-label={`Find email for ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => onFindEmails({ scope: "selected", memberIds: [m.id] })}><Mail size={14} aria-hidden />Find email</button> : null}<button type="button" className="btn btn-sm btn-ghost" aria-label={`Edit ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "edit", member: m })}><Pencil size={14} aria-hidden />Edit</button><button type="button" className="btn btn-sm btn-ghost btn-danger" aria-label={`Remove ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "remove", member: m })}><Trash2 size={14} aria-hidden />Remove</button></div></td> : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <Pager page={page} pageSize={PAGE} total={data.total} onPage={setPage} label="Creator pages" />
-      {open ? <CreatorDrawer m={open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: open }); setOpen(null); } : undefined} /> : null}
+      {open ? <CreatorDrawer m={data.members.find(m => m.id === open.id) ?? open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: open }); setOpen(null); } : undefined} /> : null}
       {dialog?.kind === "edit" ? <CreatorDialog listId={listId} member={dialog.member} onClose={() => setDialog(null)} onSaved={message => onMessage?.(message)} /> : null}
       {dialog?.kind === "remove" ? <RemoveCreatorsDialog listId={listId} listName={listName} member={dialog.member} onClose={() => setDialog(null)} onRemoved={message => onMessage?.(message)} /> : null}
     </>
@@ -191,7 +195,8 @@ function CreatorDrawer({ m, onClose, onEdit }: { m: MemberView; onClose: () => v
         )}
         <dt>Saved</dt>
         <dd>{when(m.createdAt)}</dd>
-        <dt>Email (provided)</dt><dd>{m.email ?? "—"}</dd>
+        <dt>Email</dt><dd><EmailCell member={m} /></dd>
+        {m.emailCheckedAt ? <><dt>Email checked</dt><dd>{when(m.emailCheckedAt)}</dd></> : null}
         <dt>Location</dt><dd>{m.location ?? "—"}</dd>
         <dt>Language</dt><dd>{m.language ?? "—"}</dd>
       </dl>

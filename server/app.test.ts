@@ -350,3 +350,42 @@ test("creator editing routes preserve exact list/member scope and write attribut
   assert.equal(invalid.status, 400);
   assert.equal(fake.calls.length, 4, "an empty removal scope never becomes all creators");
 });
+
+test("email preview, start and status use explicit authenticated endpoints and preserve the retry key", async () => {
+  const fake = fakeSource();
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  const id = "listemail123";
+  const headers = authed();
+  assert.equal((await fetch(`${base}/api/lists/${id}/email-jobs/preview`, { method: "POST", headers, body: JSON.stringify({ scope: "selected", memberIds: ["memberemail123"] }) })).status, 200);
+  const body = { memberIds: ["memberemail123"], maxCredits: 2, idempotencyKey: "email-retry-key" };
+  for (let i = 0; i < 2; i++) assert.equal((await fetch(`${base}/api/lists/${id}/email-jobs`, { method: "POST", headers, body: JSON.stringify(body) })).status, 202);
+  await fetch(`${base}/api/lists/${id}/email-jobs`, { headers });
+  assert.equal(fake.calls.length, 4);
+  assert.equal(fake.calls[1]!.headers["idempotency-key"], "email-retry-key");
+  assert.equal(fake.calls[2]!.headers["idempotency-key"], "email-retry-key");
+  assert.equal(fake.calls[1]!.headers["x-internal-user"], "user_ricky");
+  assert.deepEqual(JSON.parse(fake.calls[1]!.body!), { memberIds: body.memberIds, maxCredits: 2 });
+  const before = fake.calls.length;
+  assert.equal((await fetch(`${base}/api/lists/${id}/email-jobs`, { method: "POST", headers, body: "{}" })).status, 400);
+  assert.equal((await fetch(`${base}/api/lists/${id}/email-jobs/preview`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"scope":"all"}' })).status, 401);
+  assert.equal(fake.calls.length, before, "invalid/unauthorized starts never reach the backend");
+});
+
+test("sample email enrichment preserves provided addresses and manual clears with exact selection and replay", async () => {
+  const mock = createMockSource();
+  const list = await mock.createList({ name: "Email sample" });
+  const a = (await mock.addCreator(list.id, { platform: "instagram", handle: "alpha" })).member;
+  const supplied = (await mock.addCreator(list.id, { platform: "instagram", handle: "supplied", email: "mine@example.com" })).member;
+  const cleared = (await mock.addCreator(list.id, { platform: "instagram", handle: "cleared" })).member;
+  await mock.updateCreator(list.id, cleared.id, { email: null });
+  const preview = await mock.previewEmails(list.id, { scope: "all" });
+  assert.equal(preview.available, 1); assert.equal(preview.skipped, 1);
+  const body = { memberIds: [a.id, supplied.id, cleared.id], maxCredits: 2, idempotencyKey: "sample-email-key" };
+  const started = await mock.startEmailJob(list.id, body);
+  assert.equal((await mock.startEmailJob(list.id, body)).job.id, started.job.id);
+  const rows = (await mock.members(list.id)).members;
+  assert.equal(rows.find(m => m.id === supplied.id)!.email, "mine@example.com");
+  assert.equal(rows.find(m => m.id === cleared.id)!.email, null);
+  assert.equal(rows.find(m => m.id === a.id)!.email, "alpha@example.com");
+  assert.match((await mock.exportList(list.id, { scope: "all", format: "sheets" })).csv, /alpha@example.com/);
+});
