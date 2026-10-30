@@ -7,5 +7,6 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   envPrefix: ["VITE_"],
+  server: { allowedHosts: true },
   build: { outDir: "dist", sourcemap: false },
 });
