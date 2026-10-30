@@ -32,6 +32,8 @@ export interface AppConfig {
   authMode: AuthMode;
   source: { baseUrl: string; apiKey: string } | null;
   clerk: ClerkSettings | null;
+  /** Optional criteria assistant. The key is held only by this app's server. */
+  ai: { apiKey: string; model: string } | null;
   /** Variable names (never values) that block live use. Empty when the app is fully configured. */
   problems: string[];
 }
@@ -120,5 +122,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     }
   }
 
-  return { production, port, host, sourceMode, authMode, source, clerk, problems };
+  const aiKey = (env["OPENROUTER_API_KEY"] ?? "").trim();
+  const ai = aiKey ? { apiKey: aiKey, model: (env["OPENROUTER_MODEL"] ?? "").trim() || "openai/gpt-4.1-mini" } : null;
+  return { production, port, host, sourceMode, authMode, source, clerk, ai, problems };
 }

@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { createAuthGate, userOf, type Verify } from "./auth.js";
 import type { AppConfig } from "./config.js";
+import { AssistantError, createCriteriaAssistant, parseSuggestInput } from "./criteriaAssistant.js";
 import { createInternalSourcingClient, InternalSourcingApiError, type InternalSourcingClient } from "./sourceClient.js";
 
 // ---------------------------------------------------------------------------
@@ -24,6 +25,7 @@ export interface AppDeps {
   /** The sourcing backend client: real (from config) or the mock (development/tests). */
   source: InternalSourcingClient | null;
   verify?: Verify;
+  aiFetch?: typeof fetch;
   /** Directory of the built UI. Omitted in development (Vite serves it) and in API-only tests. */
   staticDir?: string | null;
 }
@@ -50,6 +52,7 @@ function idParam(req: Request, res: Response, name = "id"): string | null {
 
 export function createApp(cfg: AppConfig, deps: AppDeps): Express {
   const app = express();
+  const suggestCriteria = createCriteriaAssistant(cfg.ai, deps.aiFetch);
   app.disable("x-powered-by");
   app.set("trust proxy", Number(process.env["TRUST_PROXY_HOPS"] ?? "1") || 0);
   app.use((_req, res, next) => {
@@ -140,6 +143,27 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
       res.json(await source().archiveList(id, archived, actor(res)));
     }),
   );
+  api.delete("/lists/:id", asyncRoute(async (req, res) => {
+    const id = idParam(req, res);
+    if (id) res.json(await source().removeList(id, actor(res)));
+  }));
+  api.post("/lists/:id/members", asyncRoute(async (req, res) => {
+    const id = idParam(req, res);
+    if (id) res.json(await source().addCreator(id, req.body, actor(res)));
+  }));
+  api.patch("/lists/:id/members/:memberId", asyncRoute(async (req, res) => {
+    const id = idParam(req, res);
+    const memberId = id ? idParam(req, res, "memberId") : null;
+    if (id && memberId) res.json(await source().updateCreator(id, memberId, req.body, actor(res)));
+  }));
+  api.delete("/lists/:id/members", asyncRoute(async (req, res) => {
+    const id = idParam(req, res);
+    const memberIds = (req.body as { memberIds?: unknown } | null)?.memberIds;
+    if (!Array.isArray(memberIds) || memberIds.length === 0 || memberIds.length > 20_000 || memberIds.some(v => typeof v !== "string" || !ID.test(v))) {
+      return void res.status(400).json({ error: { code: "invalid_selection", message: "Select the creators to remove." } });
+    }
+    if (id) res.json(await source().removeCreators(id, memberIds as string[], actor(res)));
+  }));
   api.get(
     "/lists/:id/members",
     asyncRoute(async (req, res) => {
@@ -227,7 +251,13 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
     }
     res.status(201).json(await source().commitImport(req.body, actor(res), key));
   }));
-  api.post("/criteria/suggest", asyncRoute(async (req, res) => void res.json(await source().suggestCriteria(req.body))));
+  api.get("/criteria/suggest/status", (_req, res) => {
+    res.json({ available: Boolean(cfg.ai) || cfg.sourceMode === "mock", message: cfg.ai || cfg.sourceMode === "mock" ? null : "Add OPENROUTER_API_KEY to this app's Secrets and restart to enable AI suggestions. Manual criteria entry is always available." });
+  });
+  api.post("/criteria/suggest", asyncRoute(async (req, res) => {
+    const input = parseSuggestInput(req.body);
+    res.json(cfg.sourceMode === "mock" && !cfg.ai ? await source().suggestCriteria(input) : await suggestCriteria(input, userOf(res).userId));
+  }));
 
   api.use((_req, res) => res.status(404).json({ error: { code: "not_found", message: "No such endpoint." } }));
   // The source's own error codes and messages reach the UI unchanged — except the ones that mean
@@ -235,6 +265,7 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
   // (a source 401 must never look like the signed-in user's own session failing). Anything else
   // is generic.
   api.use((err: unknown, req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof AssistantError) return void res.status(err.status).json({ error: { code: err.code, message: err.message } });
     if (err instanceof InternalSourcingApiError) {
       const setup = sourceSetupError(err, req.path);
       if (setup) {

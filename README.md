@@ -78,10 +78,26 @@ development-only and are refused when `NODE_ENV=production`.
 | `CLERK_SECRET_KEY` | server secret | Secret key of the **same** Clerk application. |
 | `CLERK_AUTHORIZED_PARTIES` | server | This app's own https origin(s), comma-separated (e.g. the Replit deployment URL). Required in production. |
 | `INTERNAL_APP_ALLOWED_USER_IDS` | server | Required approved Clerk user ids (`user_…`), comma-separated. Access is user-only; organization settings are ignored. |
+| `OPENROUTER_API_KEY` | optional server secret | Enables the criteria assistant directly in this app. Add it to this app's Secrets and restart; never use a `VITE_*` name. |
+| `OPENROUTER_MODEL` | optional server | Model slug supporting structured outputs. Defaults to `openai/gpt-4.1-mini`; another compatible OpenRouter model can be selected here. |
 | `PORT`, `HOST` | platform | Defaults 5000 / 0.0.0.0. |
 
-Nothing else belongs here: no provider keys, no OpenRouter or Influencers Club key, no database or
-Redis URL, and **no sourcing limits**.
+The optional OpenRouter key is used only for the criteria assistant. Creator-provider keys,
+database/Redis URLs, and sourcing limits belong to the sourcing backend.
+
+### AI criteria suggestions
+
+Set `OPENROUTER_API_KEY` in **this app's** Secrets, then restart/redeploy it. The workflow backend's
+separate AI-agent service is not needed for this button. Missing AI configuration leaves the rest
+of the app usable and is explained beside the assistant. The default model is
+[`openai/gpt-4.1-mini`](https://openrouter.ai/openai/gpt-4.1-mini); `OPENROUTER_MODEL` can select any
+model/provider combination supporting [structured outputs](https://openrouter.ai/docs/guides/features/structured-outputs).
+
+Only a click on Suggest criteria makes a model request. Requests have a 20-second timeout and
+1,400-token output limit; overlapping identical requests share work and successful retries are
+cached briefly per user. Responses are validated against the chosen platforms and form limits.
+Suggestions fill empty fields and offer replacements for existing values for review. They never
+start sourcing, change exclusion lists, or overwrite a typed value automatically.
 
 ### Limits live on the sourcing backend
 

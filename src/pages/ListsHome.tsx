@@ -5,6 +5,7 @@ import type { ListSummary } from "../../server/sourceClient";
 import { api } from "../api";
 import { NewListDialog } from "../components/Dialogs";
 import { ImportDialog } from "../components/ImportDialog";
+import { RemoveListAction } from "../components/CreatorDialogs";
 import { Notice, Pager, Spinner, StatusBadge, useDebounced } from "../components/ui";
 import { count, when } from "../lib/format";
 import { useArchiveList } from "../lib/archive";
@@ -59,6 +60,7 @@ export function ListsHome() {
   // Search, page and archive filters share a query observer. Keep-previous-data must not leave
   // old rows actionable under a new URL while the matching result is still loading.
   const data = resultsSettling ? undefined : lists.data;
+  useEffect(() => { if (data && page > Math.max(1, Math.ceil(data.total / PAGE))) setParams({ page: data.total <= PAGE ? null : String(Math.ceil(data.total / PAGE)) }); }, [data, page]);
   return (
     <>
       <div className="page-head">
@@ -204,6 +206,7 @@ export function ListsHome() {
                             {archive.isPending && archive.variables?.id === l.id ? <Spinner label={l.archivedAt ? "Restoring" : "Archiving"} /> : l.archivedAt ? <ArchiveRestore size={14} aria-hidden /> : <Archive size={14} aria-hidden />}
                             {l.archivedAt ? "Restore" : "Archive"}
                           </button>
+                          <RemoveListAction list={l} />
                         </div>
                       </td>
                     </tr>
