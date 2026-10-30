@@ -9,7 +9,9 @@ const base = process.argv[2] ?? 'http://127.0.0.1:5068';
 assert.equal(new URL(base).hostname, '127.0.0.1', 'local stack only');
 const config = await (await fetch(`${base}/api/session/config`)).json();
 assert.equal(config.authMode, 'dev'); assert.equal(config.sourceMode, 'live');
-const backendHealth = await (await fetch('http://127.0.0.1:3917/health')).json();
+const backendBase = process.env.SOURCING_TEST_BACKEND_BASE ?? 'http://127.0.0.1:3917';
+assert.equal(new URL(backendBase).hostname, '127.0.0.1', 'local backend only');
+const backendHealth = await (await fetch(`${backendBase}/health`)).json();
 assert.equal(backendHealth.service, 'internal-sourcing-local-stack');
 const shots = process.argv[3] ?? './artifacts/email-enrichment'; mkdirSync(shots, { recursive: true });
 const api = async (path, method = 'GET', body) => {

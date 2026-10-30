@@ -1,5 +1,5 @@
 import { emailJobActive } from "../components/EmailLookup";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Download, ListFilter, Pencil, Search, ShieldBan, Sparkles, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
@@ -9,7 +9,7 @@ import { ExportDialog, FindMoreDialog, NewListDialog } from "../components/Dialo
 import { ExclusionPicker } from "../components/ExclusionPicker";
 import { CreatorManagement } from "../components/CreatorManagement";
 import { RemoveListAction } from "../components/CreatorDialogs";
-import { Modal, Notice, Spinner, StatusBadge, errorText } from "../components/ui";
+import { Modal, Notice, PageSkeleton, Spinner, StatusBadge, errorText } from "../components/ui";
 import { PLATFORM_LABELS, applyPending, applySuggestion, criteriaSummary, draftFromForm, formFromDraft, formProblems, type CriteriaForm, type PendingSuggestion } from "../lib/criteria";
 import { useArchiveList } from "../lib/archive";
 import { count, isActive, pollMs, progressText, when } from "../lib/format";
@@ -34,7 +34,7 @@ export function ListPage({ id }: { id: string }) {
       <ArrowLeft size={14} aria-hidden /> {returnHref.includes("archived=1") ? "Archived lists" : "All lists"}
     </a>
   );
-  if (list.isLoading || meta.isLoading) return <div className="empty"><Spinner label="Loading list" /></div>;
+  if (list.isLoading || meta.isLoading) return <PageSkeleton label="Loading list" />;
   if (list.isError) {
     return (
       <>
@@ -42,6 +42,7 @@ export function ListPage({ id }: { id: string }) {
         <Notice tone="danger" title={list.error instanceof ApiError && list.error.status === 404 ? "List not found" : "The list could not be loaded"}>
           {list.error.message}
         </Notice>
+        <button type="button" className="btn retry-button" onClick={() => void list.refetch()}>Try again</button>
       </>
     );
   }
@@ -239,7 +240,7 @@ function DraftEditor({ list, meta }: { list: ListDetail; meta: SourceMeta }) {
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head draft-page-head">
         <div className="field" style={{ flex: 1, maxWidth: 560 }}>
           <span className="eyebrow">New sourcing list / Draft</span>
           <label htmlFor={`${uid}-name`}>List name</label>
@@ -450,8 +451,9 @@ function ListWorkspace({ list }: { list: ListDetail }) {
   const { params } = useLocation();
   const [dialog, setDialog] = useState<"export" | "more" | "derive" | null>(null);
   const [selected, setSelected] = useState({ n: 0, total: list.memberCount });
+  const savingSelection = useIsMutating({ mutationKey: ["selection", list.id] }) > 0;
   const onSelectionCount = useCallback((n: number, total: number) => setSelected({ n, total }), []);
-  const latest: OperationView | null = list.operations.at(-1) ?? null;
+  const latest: OperationView | null = list.operations.find(operation => operation.id === list.activeOperationId) ?? list.operations.at(-1) ?? null;
   const active = isActive(list.status) || emailJobActive(list.emailJob);
   const refresh = (): void => {
     void qc.invalidateQueries({ queryKey: ["list", list.id] });
@@ -468,7 +470,7 @@ function ListWorkspace({ list }: { list: ListDetail }) {
 
   return (
     <>
-      <div className="page-head">
+      <div className="page-head workspace-page-head">
         <div style={{ minWidth: 0, flex: 1 }}>
           <span className="eyebrow">Creator lists / {list.kind === "imported" ? "Imported roster" : "Sourcing workspace"}</span>
           <RenameTitle list={list} />
@@ -488,12 +490,12 @@ function ListWorkspace({ list }: { list: ListDetail }) {
                 <Search size={16} aria-hidden /> Find more
               </button>
               <button type="button" className="btn" onClick={() => setDialog("derive")}>
-                <Copy size={16} aria-hidden /> New list using these criteria
+                <Copy size={16} aria-hidden /> <span className="label-desktop">New list using these criteria</span><span className="label-mobile">Use criteria</span>
               </button>
             </>
           ) : null}
-          <button type="button" className="btn btn-primary" disabled={list.memberCount === 0} onClick={() => setDialog("export")}>
-            <Download size={16} aria-hidden /> Export{selected.n > 0 ? ` selected (${count(selected.n)})` : ` all (${count(list.memberCount)})`}
+          <button type="button" className="btn btn-primary" disabled={list.memberCount === 0 || savingSelection} aria-busy={savingSelection} onClick={() => setDialog("export")}>
+            {savingSelection ? <Spinner label="Saving selection" /> : <Download size={16} aria-hidden />} {savingSelection ? "Saving selection…" : `Export${selected.n > 0 ? ` selected (${count(selected.n)})` : ` all (${count(list.memberCount)})`}`}
           </button>
           {!list.archivedAt ? <button type="button" className="btn btn-ghost" disabled={archive.isPending || emailJobActive(list.emailJob)} onClick={() => archive.mutate({ id: list.id, archived: true })}>
             {archive.isPending ? <Spinner label="Archiving" /> : <Archive size={16} aria-hidden />} Archive
@@ -543,17 +545,17 @@ function RenameTitle({ list }: { list: ListDetail }) {
       className="row-gap"
       onSubmit={(e) => {
         e.preventDefault();
-        if (value.trim()) rename.mutate();
+        if (value.trim() && !rename.isPending) rename.mutate();
       }}
     >
-      <div className="field" style={{ minWidth: 280, flex: 1 }}>
+      <div className="field" style={{ minWidth: "min(280px, 100%)", flex: 1 }}>
         <label htmlFor={uid}>List name</label>
-        <input id={uid} className="input" value={value} maxLength={120} autoFocus onChange={(e) => setValue(e.target.value)} />
+        <input id={uid} className="input" value={value} maxLength={120} readOnly={rename.isPending} autoFocus onChange={(e) => setValue(e.target.value)} />
       </div>
       <button type="submit" className="btn btn-primary" disabled={!value.trim() || rename.isPending}>
-        Save
+        {rename.isPending ? <Spinner label="Saving list name" /> : null}{rename.isPending ? "Saving…" : "Save"}
       </button>
-      <button type="button" className="btn" onClick={() => setEditing(false)}>
+      <button type="button" className="btn" disabled={rename.isPending} onClick={() => setEditing(false)}>
         Cancel
       </button>
       {rename.isError ? <span className="error-text">{rename.error.message}</span> : null}
@@ -563,10 +565,17 @@ function RenameTitle({ list }: { list: ListDetail }) {
 }
 
 function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationView | null }) {
+  const consideredTotal = list.operations.reduce((total, operation) => total + operation.counters.considered, 0);
   return (
-    <div className="layout-2">
-      <div className="card card-pad section">
-        <h2>Search</h2>
+    <div className="search-summary">
+      {latest ? <section className="card search-overview" aria-label="Search progress">
+        <OperationFacts op={latest} />
+      </section> : null}
+      <details className="search-details">
+      <summary><ListFilter size={16} aria-hidden /><strong>Search criteria & activity</strong><span className="muted small">{list.operations.length} {list.operations.length === 1 ? "search" : "searches"} · {count(consideredTotal)} considered in total</span></summary>
+      <div className="layout-2 search-context">
+      <section className="card card-pad section">
+        <h2 className="inline"><ListFilter size={17} aria-hidden />Search criteria</h2>
         <dl className="kv">
           <dt>Criteria</dt>
           <dd>{criteriaSummary(list.criteria)}</dd>
@@ -599,10 +608,16 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
           </dd>
         </dl>
         <p className="muted small">{list.criteriaLocked ? "Criteria and exclusions are fixed once a search has started. To change them, start a new list using these criteria." : "Restore this draft to edit its criteria and exclusions."}</p>
-      </div>
-      <div className="card card-pad section">
-        <h2>Latest search</h2>
-        {latest ? <OperationFacts op={latest} /> : <span className="muted">No search yet.</span>}
+      </section>
+      <section className="card card-pad section">
+        <h2 className="inline"><ShieldBan size={17} aria-hidden />Search activity</h2>
+        {latest ? <dl className="kv activity-facts">
+          <dt>Started</dt><dd>{when(latest.createdAt)}</dd>
+          {latest.completedAt ? <><dt>Finished</dt><dd>{when(latest.completedAt)}</dd></> : null}
+          <dt>Excluded at start</dt><dd>{count(latest.excludedCreatorCount)} unique creators from {latest.excludedLists.length} {latest.excludedLists.length === 1 ? "list" : "lists"}</dd>
+          <dt>Already saved at start</dt><dd>{count(latest.ownMemberCount)} creators</dd>
+          <dt>Total considered</dt><dd>{count(consideredTotal)} across {list.operations.length} {list.operations.length === 1 ? "search" : "searches"}</dd>
+        </dl> : <span className="muted">No search yet.</span>}
         {list.operations.length > 1 ? (
           <details>
             <summary style={{ cursor: "pointer" }}>All searches on this list ({list.operations.length})</summary>
@@ -615,42 +630,35 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
             </ul>
           </details>
         ) : null}
+      </section>
       </div>
+      </details>
     </div>
   );
 }
 
 function OperationFacts({ op }: { op: OperationView }) {
   const running = op.status === "queued" || op.status === "running";
+  const progress = op.targetCount > 0 ? Math.min(100, Math.max(0, op.admittedCount / op.targetCount * 100)) : 0;
   return (
-    <div className="stack">
-      <div className="inline">
+    <div className="operation-facts">
+      <div className="search-progress-head">
+        <div><span className="eyebrow">{running ? "Search in progress" : "Latest search"}</span><h2>{op.status === "queued" ? "Your search is queued" : running ? "Finding your next creators" : op.listStatus === "complete" ? "Your creator search is complete" : op.listStatus === "failed" ? "The search stopped" : "Search finished with fewer matches"}</h2><p className="muted small">{running ? "You can leave this page. Results are saved as they qualify." : op.admittedCount > 0 ? "Your saved creators are ready to review below." : "No new creators were saved. Review the search outcome below."}</p></div>
+        <div className="search-progress-status">
         <StatusBadge status={op.listStatus} />
         {running ? <Spinner label="Search in progress" /> : null}
-        <strong>{progressText(op)}</strong>
+        </div>
       </div>
-      {op.status === "queued" ? <span className="muted">Waiting for the sourcing service to start this search.</span> : null}
-      {op.outcome ? <Notice tone={op.listStatus === "complete" ? "success" : op.listStatus === "failed" ? "danger" : "warning"}>{op.outcome.message}</Notice> : null}
-      <dl className="kv">
-        <dt>Excluded at start</dt>
-        <dd>
-          {count(op.excludedCreatorCount)} unique creators from {op.excludedLists.length} {op.excludedLists.length === 1 ? "list" : "lists"}, plus {count(op.ownMemberCount)} already on this list
-        </dd>
-        <dt>Skipped as excluded</dt>
-        <dd>{count(op.counters.excluded)}</dd>
-        <dt>Already on this list</dt>
-        <dd>{count(op.counters.duplicates)}</dd>
-        <dt>Considered</dt>
-        <dd>{count(op.counters.considered)}</dd>
-        <dt>Started</dt>
-        <dd>{when(op.createdAt)}</dd>
-        {op.completedAt ? (
-          <>
-            <dt>Finished</dt>
-            <dd>{when(op.completedAt)}</dd>
-          </>
-        ) : null}
+      <div className="search-progress-label"><strong>{progressText(op)}</strong><span className="muted small">{count(op.targetCount)} requested this search</span></div>
+      <div className="search-progress-track" role="progressbar" aria-label="Qualified creators found" aria-valuemin={0} aria-valuemax={op.targetCount} aria-valuenow={op.admittedCount} aria-valuetext={`${op.admittedCount} of ${op.targetCount} requested creators found`}><span style={{ width: `${progress}%` }} /></div>
+      <dl className="metric-grid">
+        <div className="search-metric"><dt>Creators considered</dt><dd><strong>{count(op.counters.considered)}</strong><span>Reviewed this search</span></dd></div>
+        <div className="search-metric metric-qualified"><dt>Qualified & saved</dt><dd><strong>{count(op.admittedCount)}</strong><span>Added to your list</span></dd></div>
+        <div className="search-metric"><dt>Skipped by exclusions</dt><dd><strong>{count(op.counters.excluded)}</strong><span>From selected lists</span></dd></div>
+        <div className="search-metric"><dt>Already on this list</dt><dd><strong>{count(op.counters.duplicates)}</strong><span>Duplicates skipped</span></dd></div>
       </dl>
+      {op.status === "queued" ? <Notice tone="neutral">Waiting for the sourcing service to start this search. Counters update as creators are processed.</Notice> : null}
+      {op.outcome ? <Notice tone={op.listStatus === "complete" ? "success" : op.listStatus === "failed" ? "danger" : "warning"}>{op.outcome.message}</Notice> : null}
     </div>
   );
 }

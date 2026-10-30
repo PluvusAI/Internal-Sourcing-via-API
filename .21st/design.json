@@ -15,7 +15,9 @@
     "components": [
       "src/components/ui.tsx",
       "src/components/CriteriaForm.tsx",
-      "src/components/ExclusionPicker.tsx"
+      "src/components/ExclusionPicker.tsx",
+      "src/components/CreatorAvatar.tsx",
+      "src/components/MembersTable.tsx"
     ],
     "assets": [],
     "instructions": []
@@ -37,17 +39,25 @@
     "spacing": {},
     "radius": {},
     "shadows": {},
-    "motion": {},
+    "motion": {
+      "feedback": "150\u2013200ms control, dialog and drawer transitions",
+      "loading": "800ms spinner and 1600ms skeleton shimmer",
+      "progress": "600ms width transition using actual admitted / target counts",
+      "accessibility": "All animation and transitions disabled for prefers-reduced-motion"
+    },
     "density": "compact internal tool"
   },
   "components": {
     "installed": [],
     "preferredPrimitives": [
       "Native labelled inputs and checkboxes",
-      "Existing TagInput, Notice, Spinner, Pager and Modal",
+      "Existing TagInput, Notice, Spinner, LoadingStatus, Pager and Modal",
       "Lucide icons"
     ],
-    "patterns": []
+    "patterns": [
+      "21st @animbits/loaders-spinner and loaders-skeleton adapted to CSS",
+      "21st @appica-dev/avatar image with initials fallback"
+    ]
   },
   "constraints": {
     "must": [
@@ -57,14 +67,18 @@
     ],
     "avoid": [
       "New runtime dependencies",
-      "Decorative animation",
-      "Copying reference branding"
+      "Copying reference branding",
+      "Animation that delays actions or ignores reduced-motion preferences"
     ]
   },
   "decisions": [
     "Sourcing setup uses Criteria \u2192 Exclusions \u2192 Review & search, with editable steps and one primary action per step.",
     "Archive is a separate library view; use labelled Archive and Restore actions with undo feedback.",
-    "Suggested criteria use semantic field icons and a Sparkles marker until edited."
+    "Suggested criteria use semantic field icons and a Sparkles marker until edited.",
+    "Search results lead with actual considered, qualified, excluded and duplicate counters; criteria and activity expand below the progress overview.",
+    "Render API pictureUrl in creator tables, detail drawers and exclusion previews with initials for missing or failed images.",
+    "Use layout-preserving skeletons for page and data loading, spinners for pending actions, and short reduced-motion-aware feedback transitions.",
+    "All async components use visible action-specific loading feedback; retain saved rows during refresh, disable export while selection saves, and keep focus and inputs stable while dialogs submit."
   ],
   "evidence": [
     {

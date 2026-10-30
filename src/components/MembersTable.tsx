@@ -6,7 +6,8 @@ import type { EmailScope, MemberView } from "../../server/sourceClient";
 import { api } from "../api";
 import { PLATFORM_LABELS } from "../lib/criteria";
 import { count, percent, when } from "../lib/format";
-import { Drawer, Notice, Pager, Spinner } from "./ui";
+import { Drawer, LoadingStatus, Notice, Pager, Spinner, TableSkeleton } from "./ui";
+import { CreatorAvatar } from "./CreatorAvatar";
 import { CreatorDialog, RemoveCreatorsDialog } from "./CreatorDialogs";
 
 const PAGE = 50;
@@ -34,6 +35,7 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
   // A click shows at once (a local overlay); the saved selection is the truth once the source answers.
   const [overlay, setOverlay] = useState<{ all: boolean | null; ids: Map<string, boolean> }>({ all: null, ids: new Map() });
   const select = useMutation({
+    mutationKey: ["selection", listId],
     mutationFn: (body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) => api.setSelection(listId, body),
     onMutate: (body) =>
       setOverlay((o) => ("all" in body ? { all: body.selected, ids: new Map() } : { all: o.all, ids: new Map([...o.ids, ...body.memberIds.map((id) => [id, body.selected] as const)]) })),
@@ -53,10 +55,10 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
     if (pageBox.current) pageBox.current.indeterminate = pageSelected > 0 && pageSelected < rows.length;
   }, [pageSelected, rows.length]);
 
-  if (q.isLoading || q.isPlaceholderData) return <div className="empty"><Spinner label="Loading creators" /></div>;
-  if (q.isError) return <div className="card-pad"><Notice tone="danger">Could not load creators: {q.error.message}</Notice></div>;
+  if (q.isLoading || q.isPlaceholderData) return <><TableSkeleton label="Loading creators" /><Pager key="creator-pages" page={page} pageSize={PAGE} total={q.data?.total ?? 0} onPage={setPage} label="Creator pages" loading /></>;
+  if (q.isError) return <div className="card-pad"><Notice tone="danger">Could not load creators: {q.error.message}</Notice><button type="button" className="btn btn-sm retry-button" onClick={() => void q.refetch()}>Try again</button></div>;
   if (!data || data.total === 0) {
-    return <div className="empty empty-state"><Users size={28} aria-hidden /><strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "Qualified creators appear here as soon as they are saved." : "Add a creator to this list or use the sourcing controls to find new creators."}</span></div>;
+    return <div className="empty empty-state">{live ? <Spinner label="Searching for creators" large /> : <Users size={28} aria-hidden />}<strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "The search is running. Qualified creators appear here as they are saved; follow the counters above for progress." : editable ? "Add a creator to this list or use the sourcing controls to find new creators." : "This archived list has no saved creators. Restore it to add profiles."}</span></div>;
   }
   const allSelected = data.selectedCount === data.total;
   const fullPageSelected = rows.length > 0 && pageSelected === rows.length;
@@ -64,6 +66,7 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
 
   return (
     <>
+      {live || q.isFetching || select.isPending ? <div className="creator-table-status"><LoadingStatus label={select.isPending ? "Saving selection" : q.isFetching ? "Updating saved creators" : "Search running"} />{live ? <span className="muted small">New matches are added automatically.</span> : null}</div> : null}
       <div className="mobile-page-select">
         <button type="button" className="btn btn-sm" disabled={select.isPending} onClick={togglePage}>
           {fullPageSelected ? "Unselect this page" : `Select this page (${count(rows.length)})`}
@@ -91,7 +94,7 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
         </div>
       ) : null}
       {select.isError ? <div className="card-pad"><Notice tone="danger" title="Selection could not be saved">{select.error.message}</Notice></div> : null}
-      <div className="table-wrap">
+      <div className="table-wrap" aria-busy={q.isFetching || select.isPending}>
         <table className="table members-table">
           <caption className="sr-only">Saved creators with selection, profile, audience metrics, and fit details</caption>
           <thead>
@@ -108,8 +111,7 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
                 />
               </th>
               <th>Creator</th>
-              <th>Platform · handle</th>
-              <th>Profile</th>
+              <th>Platform</th>
               <th className="num">Followers</th>
               <th className="num">Engagement</th>
               <th>Email</th>
@@ -119,40 +121,32 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
           </thead>
           <tbody>
             {rows.map((m) => (
-              <tr key={m.id} className={m.selected ? "is-selected" : undefined}>
+              <tr key={m.id} className={`creator-row${m.selected ? " is-selected" : ""}`}>
                 <td className="check">
                   <input type="checkbox" className="checkbox" aria-label={`Select ${m.displayName ?? m.handle ?? "creator"}`} checked={m.selected} disabled={select.isPending} onChange={() => select.mutate({ selected: !m.selected, memberIds: [m.id] })} />
                 </td>
                 <td className="name" data-label="Creator">
-                  <button type="button" className="link-btn" style={{ textDecoration: "none", color: "var(--text)" }} onClick={() => setOpen(m)}>
-                    {m.displayName ?? m.handle ?? "Unnamed"}
-                  </button>
-                  {m.accounts.length > 1 ? <div className="cell-sub">+{m.accounts.length - 1} more {m.accounts.length === 2 ? "account" : "accounts"}</div> : null}
+                  <div className="creator-cell">
+                    <CreatorAvatar member={m} />
+                    <div className="creator-identity">
+                      <button type="button" className="creator-name" onClick={() => setOpen(m)}>{m.displayName ?? m.handle ?? "Unnamed"}</button>
+                      {m.profileUrl ? <a href={m.profileUrl} target="_blank" rel="noopener noreferrer" className="creator-profile creator-handle">@{m.handle ?? "profile"}<ExternalLink size={12} aria-hidden /><span className="sr-only">Open profile (opens in a new tab)</span></a> : <span className="cell-sub creator-handle">{m.handle ? `@${m.handle}` : "No handle provided"}</span>}
+                      {m.accounts.length > 1 ? <span className="cell-sub">+{m.accounts.length - 1} more {m.accounts.length === 2 ? "account" : "accounts"}</span> : null}
+                    </div>
+                  </div>
                 </td>
-                <td data-label="Platform · handle">
-                  {platformLabel(m.platform)} <span className="muted">@{m.handle ?? "—"}</span>
-                </td>
-                <td data-label="Profile">
-                  {m.profileUrl ? (
-                    <a href={m.profileUrl} target="_blank" rel="noopener noreferrer" className="inline">
-                      Open <ExternalLink size={12} aria-hidden />
-                      <span className="sr-only">(opens in a new tab)</span>
-                    </a>
-                  ) : (
-                    <span className="dim">—</span>
-                  )}
-                </td>
+                <td data-label="Platform"><span className="platform-badge">{platformLabel(m.platform)}</span></td>
                 <td className="num" data-label="Followers">{count(m.followers)}</td>
                 <td className="num" data-label="Engagement">{percent(m.engagementPercent)}</td>
                 <td data-label="Email"><EmailCell member={m} /></td>
                 {kind === "sourced" ? <td className="reason" data-label="Why they fit"><span className="reason-copy">{m.source === "import" ? "Added manually" : m.reason ?? "—"}</span></td> : null}
-                {editable && !live ? <td className="row-actions" data-label="Actions"><div className="actions">{onFindEmails && !m.email ? <button type="button" className="btn btn-sm btn-ghost" aria-label={`Find email for ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => onFindEmails({ scope: "selected", memberIds: [m.id] })}><Mail size={14} aria-hidden />Find email</button> : null}<button type="button" className="btn btn-sm btn-ghost" aria-label={`Edit ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "edit", member: m })}><Pencil size={14} aria-hidden />Edit</button><button type="button" className="btn btn-sm btn-ghost btn-danger" aria-label={`Remove ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "remove", member: m })}><Trash2 size={14} aria-hidden />Remove</button></div></td> : null}
+                {editable && !live ? <td className="row-actions" data-label="Actions"><div className="actions">{onFindEmails && !m.email ? <button type="button" className="btn btn-sm btn-ghost" title="Find email" aria-label={`Find email for ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => onFindEmails({ scope: "selected", memberIds: [m.id] })}><Mail size={14} aria-hidden /><span className="row-action-label">Find email</span></button> : null}<button type="button" className="btn btn-sm btn-ghost" title="Edit creator" aria-label={`Edit ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "edit", member: m })}><Pencil size={14} aria-hidden /><span className="row-action-label">Edit</span></button><button type="button" className="btn btn-sm btn-ghost btn-danger" title="Remove creator" aria-label={`Remove ${m.displayName ?? m.handle ?? "creator"}`} onClick={() => setDialog({ kind: "remove", member: m })}><Trash2 size={14} aria-hidden /><span className="row-action-label">Remove</span></button></div></td> : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <Pager page={page} pageSize={PAGE} total={data.total} onPage={setPage} label="Creator pages" />
+      <Pager key="creator-pages" page={page} pageSize={PAGE} total={data.total} onPage={setPage} label="Creator pages" />
       {open ? <CreatorDrawer m={data.members.find(m => m.id === open.id) ?? open} onClose={() => setOpen(null)} onEdit={editable && !live ? () => { setDialog({ kind: "edit", member: data.members.find(m => m.id === open.id) ?? open }); setOpen(null); } : undefined} /> : null}
       {dialog?.kind === "edit" ? <CreatorDialog listId={listId} member={dialog.member} onClose={() => setDialog(null)} onSaved={message => onMessage?.(message)} /> : null}
       {dialog?.kind === "remove" ? <RemoveCreatorsDialog listId={listId} listName={listName} member={dialog.member} onClose={() => setDialog(null)} onRemoved={message => onMessage?.(message)} /> : null}
@@ -163,11 +157,9 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
 function CreatorDrawer({ m, onClose, onEdit }: { m: MemberView; onClose: () => void; onEdit?: (() => void) | undefined }) {
   return (
     <Drawer title={m.displayName ?? `@${m.handle ?? "creator"}`} onClose={onClose}>
+      <div className="creator-drawer-profile"><CreatorAvatar member={m} large /><div className="stack"><strong>{m.displayName ?? m.handle ?? "Creator"}</strong><span className="muted">{platformLabel(m.platform)} · @{m.handle ?? "—"}</span>{m.profileUrl ? <a className="creator-profile" href={m.profileUrl} target="_blank" rel="noopener noreferrer">View profile <ExternalLink size={13} aria-hidden /><span className="sr-only">(opens in a new tab)</span></a> : null}</div></div>
+      <div className="creator-drawer-metrics"><div><strong>{count(m.followers)}</strong><span>Followers</span></div><div><strong>{percent(m.engagementPercent)}</strong><span>Engagement</span></div></div>
       <dl className="kv">
-        <dt>Platform</dt>
-        <dd>{platformLabel(m.platform)}</dd>
-        <dt>Handle</dt>
-        <dd>@{m.handle ?? "—"}</dd>
         <dt>Profile</dt>
         <dd>
           {m.profileUrl ? (
@@ -178,10 +170,6 @@ function CreatorDrawer({ m, onClose, onEdit }: { m: MemberView; onClose: () => v
             "—"
           )}
         </dd>
-        <dt>Followers</dt>
-        <dd>{count(m.followers)}</dd>
-        <dt>Engagement</dt>
-        <dd>{percent(m.engagementPercent)}</dd>
         {m.source === "sourced" ? (
           <>
             <dt>Why they fit</dt>

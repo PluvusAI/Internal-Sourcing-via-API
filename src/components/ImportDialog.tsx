@@ -178,7 +178,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
             Cancel
           </button>
           <button type="button" className="btn btn-primary" disabled={!canImport || commit.isPending} onClick={submit}>
-            {commit.isPending ? <Spinner label="Importing" /> : null} Import {c ? count(c.valid) : ""} {c?.valid === 1 ? "creator" : "creators"}
+            {commit.isPending ? <Spinner decorative /> : null} {commit.isPending ? "Importing creators…" : `Import ${c ? count(c.valid) : ""} ${c?.valid === 1 ? "creator" : "creators"}`}
           </button>
         </>
       }
@@ -267,10 +267,10 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
         </section>
       ) : null}
 
-      {preview.isPending ? <Spinner label="Checking rows" /> : null}
+      {preview.isPending || (csv && !previewMatchesMapping && !preview.isError) ? <div className="loading-callout" role="status" aria-label="Checking import rows"><Spinner decorative /><span>Checking identities, duplicates, and rows to import…</span></div> : null}
       {preview.isError && !(preview.error instanceof ApiError && preview.error.code === "invalid_mapping") ? <Notice tone="danger">{errorText(preview.error)}</Notice> : null}
 
-      {report && c ? (
+      {report && c && previewMatchesMapping && !preview.isPending ? (
         <section className="section">
           <h3>Preview</h3>
           <div className="stats">

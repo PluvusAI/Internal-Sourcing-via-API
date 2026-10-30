@@ -13,6 +13,6 @@ Verification:
 - `SOURCING_BACKEND_DIR=../creator-email-backend npm test` checks proxy authentication, retry headers, sample behavior and byte-identical client contract, alongside the existing app tests.
 - `npm run typecheck` and `npm run build` check types and the browser bundle for secrets.
 - Backend `server/src/internalSourcing/emails.db.test.ts` exercises embedded Postgres and a fake provider; existing internal API and provider suites cover regressions.
-- `scripts/e2e-email-enrichment.mjs` drives the real local stack with fake contacts: selected/single/all actions, reload persistence, preservation, both exports, desktop and phone/dark-mode screenshots. Run only with the backend's isolated local stack on 3917 and a development-sign-in app; pass the Playwright installation via `NODE_PATH`.
+- `scripts/e2e-email-enrichment.mjs` drives the real local stack with fake contacts: selected/single/all actions, reload persistence, preservation, both exports, desktop and phone/dark-mode screenshots. Run only with the backend's isolated local stack and a development-sign-in app; pass the Playwright installation via `NODE_PATH`. `SOURCING_TEST_BACKEND_BASE` selects its local origin (defaults to `http://127.0.0.1:3917`).
 
-The backend is maintained in the separate `PluvusAI/pluvus-workflow-prototype` repository. Do not deploy only the app against an older backend. Set `SOURCING_BACKEND_DIR` to that checkout when running the client parity test.
+Backend dependency: [pluvus-workflow-prototype PR #491](https://github.com/PluvusAI/pluvus-workflow-prototype/pull/491), branch `feat/internal-email-enrichment` (`../creator-email-backend` locally). Merge/deploy the backend dependency before deploying this app; an older backend does not expose the email endpoints.

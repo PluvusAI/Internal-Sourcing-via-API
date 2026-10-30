@@ -8,7 +8,7 @@ import { clearKey, pendingKey, browserKeyStore } from "../lib/idempotency";
 import { findMoreDefault, isLimitError, targetProblem } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
 import { listHref, navigate } from "../router";
-import { Modal, Notice, Spinner, errorText, useIsMounted } from "./ui";
+import { LoadingStatus, Modal, Notice, Spinner, errorText, useIsMounted } from "./ui";
 
 /** "New sourcing list", or "New list using these criteria" when `from` is a sourced list. */
 export function NewListDialog({ from, onClose }: { from: Pick<ListSummary, "id" | "name"> | null; onClose: () => void }) {
@@ -46,7 +46,7 @@ export function NewListDialog({ from, onClose }: { from: Pick<ListSummary, "id" 
             Cancel
           </button>
           <button type="button" className="btn btn-primary" disabled={!name.trim() || create.isPending} onClick={submit}>
-            {create.isPending ? <Spinner label="Creating" /> : null} Create list
+            {create.isPending ? <Spinner decorative /> : null} {create.isPending ? "Creating list…" : "Create list"}
           </button>
         </>
       }
@@ -113,26 +113,27 @@ export function FindMoreDialog({ listId, listName, onClose, onStarted }: { listI
     <Modal
       title="Find more creators"
       onClose={onClose}
+      closeDisabled={start.isPending}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" disabled={start.isPending} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className="btn btn-primary" disabled={max === null || problem !== null || start.isPending} onClick={() => start.mutate()}>
-            {start.isPending ? <Spinner label="Starting" /> : null} Find more
+          <button type="button" className="btn btn-primary" disabled={max === null || meta.isError || problem !== null || start.isPending} onClick={() => start.mutate()}>
+            {start.isPending ? <Spinner decorative /> : null} {start.isPending ? "Starting search…" : "Find more"}
           </button>
         </>
       }
     >
       <div className="field">
         <label htmlFor={id}>Additional new creators</label>
-        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={text} onChange={(e) => setN(e.target.value)} aria-invalid={problem !== null} aria-describedby={`${id}-hint${problem && text !== "" ? ` ${id}-error` : ""}`} />
+        <input id={id} data-autofocus className="input" style={{ maxWidth: 160 }} inputMode="numeric" value={text} readOnly={start.isPending} onChange={(e) => setN(e.target.value)} aria-invalid={problem !== null} aria-describedby={`${id}-hint${problem && text !== "" ? ` ${id}-error` : ""}`} />
         <span className="hint" id={`${id}-hint`}>
-          {meta.isLoading ? "Checking the current limit…" : max !== null ? `1 to ${max} per search (the sourcing service’s current limit).` : null}
+          {meta.isLoading ? <LoadingStatus label="Checking the current limit" /> : max !== null ? `1 to ${max} per search (the sourcing service’s current limit).` : null}
         </span>
         {problem && text !== "" ? <span className="error" id={`${id}-error`}>{problem}</span> : null}
       </div>
-      {meta.isError ? <Notice tone="danger">The current limit could not be read: {errorText(meta.error)}</Notice> : null}
+      {meta.isError ? <Notice tone="danger">The current limit could not be read: {errorText(meta.error)} <button type="button" className="link-btn" onClick={() => void meta.refetch()}>Try again</button></Notice> : null}
       <Notice tone="info">
         Uses this list’s saved criteria and selected exclusion lists (their current membership), and always skips every creator already saved on <strong>{listName}</strong>. New creators are added to this list, however many it already holds.
       </Notice>
@@ -178,18 +179,19 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
     <Modal
       title={`Export ${listName}`}
       onClose={onClose}
+      closeDisabled={run.isPending}
       footer={
         <>
-          <button type="button" className="btn" onClick={onClose}>
+          <button type="button" className="btn" disabled={run.isPending} onClick={onClose}>
             {done ? "Close" : "Cancel"}
           </button>
-          <button type="button" className="btn btn-primary" disabled={run.isPending || (scope === "selected" && selectedCount === 0)} onClick={() => run.mutate()}>
-            {run.isPending ? <Spinner label="Preparing" /> : <Download size={16} />} Download CSV
+          <button type="button" className="btn btn-primary" disabled={run.isPending || !meta.data || meta.isError || (scope === "selected" && selectedCount === 0)} onClick={() => { setDone(null); run.mutate(); }}>
+            {run.isPending ? <Spinner decorative /> : <Download size={16} aria-hidden />} {run.isPending ? "Preparing CSV…" : "Download CSV"}
           </button>
         </>
       }
     >
-      <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0 }}>
+      <fieldset className="stack" disabled={run.isPending} style={{ border: "none", padding: 0, margin: 0 }}>
         <legend className="field-label">Rows</legend>
         <label className="inline">
           <input type="radio" name="scope" checked={scope === "selected"} disabled={selectedCount === 0} onChange={() => setScope("selected")} /> Export selected ({count(selectedCount)})
@@ -198,7 +200,7 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
           <input type="radio" name="scope" checked={scope === "all"} onChange={() => setScope("all")} /> Export all ({count(total)})
         </label>
       </fieldset>
-      <fieldset className="stack" style={{ border: "none", padding: 0, margin: 0 }}>
+      <fieldset className="stack" disabled={run.isPending} style={{ border: "none", padding: 0, margin: 0 }}>
         <legend className="field-label">Format</legend>
         <label className="inline">
           <input type="radio" name="format" checked={format === "default"} onChange={() => setFormat("default")} /> Compact — 20 columns (default)
@@ -206,8 +208,7 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
         <label className="inline">
           <input type="radio" name="format" checked={format === "sheets"} onChange={() => setFormat("sheets")} /> Existing Sheets template — 93 columns
         </label>
-        <span className="field-label small">Columns, in order ({headers.length})</span>
-        {meta.isLoading ? <Spinner /> : <code className="headers">{headers.join(", ")}</code>}
+        {meta.isLoading ? <LoadingStatus label="Loading export formats" /> : meta.isError ? <Notice tone="danger">Could not load export formats. <button type="button" className="link-btn" onClick={() => void meta.refetch()}>Try again</button></Notice> : <><span className="field-label small">Columns, in order ({headers.length})</span><code className="headers">{headers.join(", ")}</code></>}
         <span className="hint muted small">Unknown values are left blank. Emails include supplied addresses and saved Find emails results. A download never looks up contacts or runs a search.</span>
       </fieldset>
       <Notice tone="neutral">
@@ -215,9 +216,9 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
       </Notice>
       {run.isError ? <Notice tone="danger">{errorText(run.error)}</Notice> : null}
       {done ? (
-        <Notice tone="success">
+        <div role="status"><Notice tone="success">
           Download started: {done.filename} ({count(done.count)} rows). Check your browser’s downloads to confirm it was saved.
-        </Notice>
+        </Notice></div>
       ) : null}
     </Modal>
   );

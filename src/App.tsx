@@ -12,8 +12,8 @@ const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | u
 
 export function App() {
   const cfg = useQuery({ queryKey: ["session-config"], queryFn: api.sessionConfig, staleTime: 30_000, refetchInterval: 30_000, retry: 1 });
-  if (cfg.isLoading) return <Centered><Spinner label="Loading" /></Centered>;
-  if (cfg.isError) return <Centered><Notice tone="danger" title="The app server could not be reached">{cfg.error.message}</Notice></Centered>;
+  if (cfg.isLoading) return <AppLoading label="Opening your workspace" />;
+  if (cfg.isError) return <Centered><div className="stack"><Notice tone="danger" title="The app server could not be reached">{cfg.error.message}</Notice><button type="button" className="btn" onClick={() => void cfg.refetch()}>Try again</button></div></Centered>;
   const c = cfg.data!;
   if (c.setupProblems.length > 0) return <SetupRequired problems={c.setupProblems} />;
   if (c.authMode === "dev") return <Shell config={c} account={<span className="badge badge-warning">Development sign-in</span>} />;
@@ -42,7 +42,7 @@ function ClerkGate({ config }: { config: SessionConfig }) {
     };
   }, [isSignedIn, getToken]);
 
-  if (!isLoaded) return <Centered><Spinner label="Loading sign-in" /></Centered>;
+  if (!isLoaded) return <AppLoading label="Loading sign-in" />;
   if (!isSignedIn) {
     return (
       <Centered>
@@ -50,7 +50,7 @@ function ClerkGate({ config }: { config: SessionConfig }) {
       </Centered>
     );
   }
-  if (state.kind === "checking") return <Centered><Spinner label="Checking access" /></Centered>;
+  if (state.kind === "checking") return <AppLoading label="Checking workspace access" />;
   if (state.kind === "denied") {
     return (
       <Centered>
@@ -76,12 +76,13 @@ function Shell({ config, account }: { config: SessionConfig; account: ReactNode 
   const setupError = meta.error instanceof ApiError && SOURCE_SETUP_CODES.has(meta.error.code) ? meta.error : null;
   return (
     <div className="shell">
+      <a className="skip-link" href="#main">Skip to content</a>
       <header className="topbar">
         <a href="/" className="brand" onClick={linkHandler("/")}>
           <span className="brand-mark" aria-hidden>
             P
           </span>
-          Creator sourcing
+          <span className="brand-wordmark">pluvus<span>Creator sourcing</span></span>
         </a>
         <span className="topbar-spacer" />
         {account}
@@ -96,7 +97,7 @@ function Shell({ config, account }: { config: SessionConfig; account: ReactNode 
           Not connected to the sourcing service: {setupError.message}
         </div>
       ) : null}
-      <main className="main">{route.name === "list" ? <ListPage key={route.id} id={route.id} /> : <ListsHome />}</main>
+      <main className="main" id="main" tabIndex={-1}>{route.name === "list" ? <ListPage key={route.id} id={route.id} /> : <ListsHome />}</main>
     </div>
   );
 }
@@ -122,4 +123,8 @@ function SetupRequired({ problems }: { problems: string[] }) {
 
 function Centered({ children }: { children: ReactNode }) {
   return <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 16 }}>{children}</div>;
+}
+
+function AppLoading({ label }: { label: string }) {
+  return <Centered><div className="app-loading"><span className="brand-mark" aria-hidden>P</span><strong>Creator sourcing</strong><span className="inline muted"><Spinner label={label} />{label}…</span></div></Centered>;
 }
