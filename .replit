@@ -1,5 +1,4 @@
-# Replit project file for the internal sourcing app — see README "Hosting on Replit".
-modules = ["nodejs-20"]
+modules = ["nodejs-20", "web"]
 run = "npm run dev"
 
 [nix]
