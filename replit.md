@@ -20,8 +20,8 @@ For live use, configure:
 - `SOURCING_INTERNAL_APP_API_KEY`: a secret matching the backend's internal key.
 - `VITE_CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY`: matching keys from the
   intended Clerk application. Preserve the existing identity provider.
-- `INTERNAL_APP_ALLOWED_USER_IDS` and/or `INTERNAL_APP_ALLOWED_ORG_IDS`: approved
-  Clerk identities.
+- `INTERNAL_APP_ALLOWED_USER_IDS`: approved individual Clerk users. Access is
+  user-only; organization settings are ignored and never grant access.
 - `CLERK_AUTHORIZED_PARTIES`: this app's HTTPS origin(s), required in production.
 
 Add credentials through Secrets, never source files. Restart the workflow after

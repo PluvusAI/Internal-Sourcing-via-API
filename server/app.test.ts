@@ -32,7 +32,7 @@ const liveEnv = {
   SOURCING_INTERNAL_APP_API_KEY: KEY,
   CLERK_SECRET_KEY: "sk_test_placeholder",
   CLERK_AUTHORIZED_PARTIES: "https://app.example.test",
-  INTERNAL_APP_ALLOWED_ORG_IDS: "org_allowed1",
+  INTERNAL_APP_ALLOWED_USER_IDS: "user_ricky",
 };
 
 interface Recorded {
@@ -89,34 +89,46 @@ test("mock data and development sign-in are refused in production", () => {
 
 test("a complete live configuration has no problems; an allowlist is required", () => {
   assert.deepEqual(loadConfig(liveEnv).problems, []);
-  const noAllow = loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_ORG_IDS: "" });
-  assert.ok(noAllow.problems.some((p) => p.includes("INTERNAL_APP_ALLOWED_ORG_IDS or INTERNAL_APP_ALLOWED_USER_IDS")));
+  const noAllow = loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_USER_IDS: "", INTERNAL_APP_ALLOWED_ORG_IDS: "org_allowed1" });
+  assert.ok(noAllow.problems.includes("INTERNAL_APP_ALLOWED_USER_IDS must name who may sign in"));
+  assert.ok(noAllow.problems.every((p) => !p.includes("INTERNAL_APP_ALLOWED_ORG_IDS")));
   assert.ok(loadConfig({ ...liveEnv, SOURCING_API_BASE_URL: "http://sourcing.example.test" }).problems.some((p) => p.includes("https")));
   for (const url of ["https://sourcing.example.test/api/v1/internal-sourcing", "https://sourcing.example.test/?x=1", "https://user:pass@sourcing.example.test"]) {
     assert.ok(loadConfig({ ...liveEnv, SOURCING_API_BASE_URL: url }).problems.some((p) => p.includes("SOURCING_API_BASE_URL")), url);
   }
 });
 
-test("sign-in: no token 401, bad token 401, wrong organization 403, no active organization 403, removed member cannot write", async () => {
+test("legacy organization settings cannot block setup or replace the user allowlist", () => {
+  for (const legacyOrg of ["", "org_allowed1", "user_ricky", "N/A"]) {
+    const cfg = loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_ORG_IDS: legacyOrg });
+    assert.deepEqual(cfg.problems, []);
+    assert.deepEqual(cfg.clerk?.allowedUserIds, ["user_ricky"]);
+  }
+  assert.ok(loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_USER_IDS: "not-a-user-id" }).problems.includes("INTERNAL_APP_ALLOWED_USER_IDS must be Clerk user ids (user_…)"));
+});
+
+test("sign-in requires an approved user, never an organization; removed users cannot read or write", async () => {
   const { client } = fakeSource(() => ({ status: 200, body: { q: "", page: 1, pageSize: 25, total: 0, matchingNotEligible: 0, lists: [] } }));
-  let member = true;
-  const base = await serve(createApp(loadConfig(liveEnv), { source: client, verify: allowVerify, memberships: async () => (member ? ["org_allowed1"] : []) }));
+  const cfg = loadConfig({ ...liveEnv, INTERNAL_APP_ALLOWED_ORG_IDS: "org_other" });
+  const base = await serve(createApp(cfg, { source: client, verify: allowVerify }));
   assert.equal((await fetch(`${base}/api/lists`)).status, 401);
   assert.equal((await fetch(`${base}/api/lists`, { headers: authed("forged") })).status, 401);
   const other = await fetch(`${base}/api/lists`, { headers: authed("other-org") });
   assert.equal(other.status, 403);
   const noOrg = await fetch(`${base}/api/lists`, { headers: authed("no-org") });
-  assert.equal(((await noOrg.json()) as { error: { code: string } }).error.code, "organization_required");
+  assert.equal(noOrg.status, 200);
   assert.equal((await fetch(`${base}/api/lists`, { headers: authed() })).status, 200);
-  member = false;
+  assert.equal((await fetch(`${base}/api/lists`, { method: "POST", headers: authed("no-org"), body: JSON.stringify({ name: "x" }) })).status, 201);
+  cfg.clerk!.allowedUserIds = [];
+  assert.equal((await fetch(`${base}/api/lists`, { headers: authed() })).status, 403);
   const write = await fetch(`${base}/api/lists`, { method: "POST", headers: authed(), body: JSON.stringify({ name: "x" }) });
   assert.equal(write.status, 403);
-  assert.equal(((await write.json()) as { error: { code: string } }).error.code, "membership_required");
+  assert.equal(((await write.json()) as { error: { code: string } }).error.code, "not_allowed");
 });
 
 test("each UI endpoint calls exactly one source endpoint, with the server-held key and the signed-in user as attribution", async () => {
   const fake = fakeSource((r) => (r.url.includes("/export") ? { status: 200, body: "﻿email,first_name\r\n,Ana\r\n", headers: { "x-export-count": "1", "content-disposition": 'attachment; filename="brand-a-all-2026-10-28.csv"' } } : { status: 200, body: { ok: true } }));
-  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
   await fetch(`${base}/api/lists?q=Brand%20A&eligible=1&page=2`, { headers: authed() });
   await fetch(`${base}/api/lists/abcdefgh1234`, { method: "PATCH", headers: authed(), body: JSON.stringify({ name: "Brand A - Batch 1" }) });
   const exp = await fetch(`${base}/api/lists/abcdefgh1234/export`, { method: "POST", headers: authed(), body: JSON.stringify({ format: "default", scope: "all" }) });
@@ -133,7 +145,7 @@ test("each UI endpoint calls exactly one source endpoint, with the server-held k
 
 test("there is no pass-through: unknown paths 404 and never reach the source; a search needs an idempotency key", async () => {
   const fake = fakeSource();
-  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
   for (const path of ["/api/v1/sourcing/requests", "/api/lists/abcdefgh1234/../../admin", "/api/campaigns"]) {
     assert.equal((await fetch(`${base}${path}`, { headers: authed() })).status, 404, path);
   }
@@ -144,7 +156,7 @@ test("there is no pass-through: unknown paths 404 and never reach the source; a 
 
 test("source errors reach the UI with their code; an unreachable source is a 502, not a crash", async () => {
   const conflict = fakeSource(() => ({ status: 409, body: { error: { code: "operation_active", message: "A search is already running for this list.", operationId: "op123456789" } } }));
-  const base = await serve(createApp(loadConfig(liveEnv), { source: conflict.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: conflict.client, verify: allowVerify }));
   const r = await fetch(`${base}/api/lists/abcdefgh1234/operations`, { method: "POST", headers: authed(), body: JSON.stringify({ kind: "find_more", idempotencyKey: "op-0123456789abcdef", targetCount: 5 }) });
   assert.equal(r.status, 409);
   assert.deepEqual(await r.json(), { error: { code: "operation_active", message: "A search is already running for this list.", operationId: "op123456789" } });
@@ -159,7 +171,7 @@ test("source errors reach the UI with their code; an unreachable source is a 502
 
 test("a missing list stays a 404; a missing source metadata route is a setup error", async () => {
   const fake = fakeSource((r) => ({ status: 404, body: { error: { code: "not_found", message: r.url.endsWith("/meta") ? "No metadata route." : "No such list." } } }));
-  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
   const list = await fetch(`${base}/api/lists/abcdefgh1234`, { headers: authed() });
   assert.equal(list.status, 404);
   assert.deepEqual(await list.json(), { error: { code: "not_found", message: "No such list." } });
@@ -189,7 +201,7 @@ test("source metadata and its changing limit control new operations without an a
     accepted++;
     return { status: 202, body: { operation: { targetCount: requested }, idempotentReplay: false } };
   });
-  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
   const meta = await fetch(`${base}/api/meta`, { headers: authed() });
   assert.equal(meta.status, 200);
   assert.equal(((await meta.json()) as { maxTargetCount: number }).maxTargetCount, 100);
@@ -220,7 +232,7 @@ test("a mismatched internal secret is a setup error naming the variable, not a s
       return new Response(JSON.stringify({ error: { code: "invalid_credentials", message: "Invalid internal app key." } }), { status: 401, headers: { "content-type": "application/json" } });
     }) as typeof fetch,
   });
-  const base = await serve(createApp(loadConfig({ ...liveEnv, SOURCING_INTERNAL_APP_API_KEY: wrong }), { source: client, verify: allowVerify, memberships: async () => ["org_allowed1"] }));
+  const base = await serve(createApp(loadConfig({ ...liveEnv, SOURCING_INTERNAL_APP_API_KEY: wrong }), { source: client, verify: allowVerify }));
   const response = await fetch(`${base}/api/meta`, { headers: authed() });
   assert.equal(response.status, 503, "a 401 here would read as the user's own sign-in failing");
   const body = (await response.json()) as { error: { code: string; message: string } };

@@ -1,7 +1,7 @@
 import express, { Router, type Express, type NextFunction, type Request, type RequestHandler, type Response } from "express";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { createAuthGate, userOf, type MembershipLookup, type Verify } from "./auth.js";
+import { createAuthGate, userOf, type Verify } from "./auth.js";
 import type { AppConfig } from "./config.js";
 import { createInternalSourcingClient, InternalSourcingApiError, type InternalSourcingClient } from "./sourceClient.js";
 
@@ -24,7 +24,6 @@ export interface AppDeps {
   /** The sourcing backend client: real (from config) or the mock (development/tests). */
   source: InternalSourcingClient | null;
   verify?: Verify;
-  memberships?: MembershipLookup;
   /** Directory of the built UI. Omitted in development (Vite serves it) and in API-only tests. */
   staticDir?: string | null;
 }
@@ -84,7 +83,7 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
     }
     next();
   });
-  api.use(createAuthGate(cfg, { ...(deps.verify ? { verify: deps.verify } : {}), ...(deps.memberships ? { memberships: deps.memberships } : {}) }));
+  api.use(createAuthGate(cfg, { ...(deps.verify ? { verify: deps.verify } : {}) }));
 
   const source = (): InternalSourcingClient => deps.source!;
   const actor = (res: Response) => ({ userRef: userOf(res).userId });

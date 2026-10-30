@@ -20,9 +20,7 @@ export interface ClerkSettings {
   jwtKey: string | null;
   /** Browser origins allowed to present tokens (the token's azp claim). */
   authorizedParties: string[];
-  /** Clerk organization ids whose ACTIVE members may use the app. */
-  allowedOrgIds: string[];
-  /** Individual Clerk user ids allowed regardless of organization. */
+  /** Individual Clerk user ids allowed to use the app. Organization membership grants no access. */
   allowedUserIds: string[];
 }
 
@@ -44,7 +42,6 @@ const list = (v: string | undefined): string[] =>
     .map((s) => s.trim())
     .filter(Boolean);
 
-const ORG_ID = /^org_[A-Za-z0-9]+$/;
 const USER_ID = /^user_[A-Za-z0-9]+$/;
 const MIN_KEY_LENGTH = 43;
 
@@ -112,16 +109,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (authMode === "clerk") {
     const secretKey = (env["CLERK_SECRET_KEY"] ?? "").trim();
     const authorizedParties = list(env["CLERK_AUTHORIZED_PARTIES"]).map((s) => s.replace(/\/+$/, ""));
-    const allowedOrgIds = list(env["INTERNAL_APP_ALLOWED_ORG_IDS"]);
     const allowedUserIds = list(env["INTERNAL_APP_ALLOWED_USER_IDS"]);
     const before = problems.length;
     if (!secretKey) problems.push("CLERK_SECRET_KEY is not set");
     if (production && authorizedParties.length === 0) problems.push("CLERK_AUTHORIZED_PARTIES is not set (the app's own https origin)");
-    if (allowedOrgIds.length === 0 && allowedUserIds.length === 0) problems.push("INTERNAL_APP_ALLOWED_ORG_IDS or INTERNAL_APP_ALLOWED_USER_IDS must name who may sign in");
-    if (allowedOrgIds.some((id) => !ORG_ID.test(id))) problems.push("INTERNAL_APP_ALLOWED_ORG_IDS must be Clerk organization ids (org_…)");
+    if (allowedUserIds.length === 0) problems.push("INTERNAL_APP_ALLOWED_USER_IDS must name who may sign in");
     if (allowedUserIds.some((id) => !USER_ID.test(id))) problems.push("INTERNAL_APP_ALLOWED_USER_IDS must be Clerk user ids (user_…)");
     if (problems.length === before) {
-      clerk = { secretKey, jwtKey: (env["CLERK_JWT_KEY"] ?? "").trim() || null, authorizedParties, allowedOrgIds, allowedUserIds };
+      clerk = { secretKey, jwtKey: (env["CLERK_JWT_KEY"] ?? "").trim() || null, authorizedParties, allowedUserIds };
     }
   }
 

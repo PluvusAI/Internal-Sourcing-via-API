@@ -1,4 +1,4 @@
-import { ClerkProvider, OrganizationSwitcher, SignIn, UserButton, useAuth } from "@clerk/react";
+import { ClerkProvider, SignIn, UserButton, useAuth } from "@clerk/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, ApiError, setTokenGetter, type SessionConfig } from "./api";
@@ -11,7 +11,7 @@ import { linkHandler, useLocation } from "./router";
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
 
 export function App() {
-  const cfg = useQuery({ queryKey: ["session-config"], queryFn: api.sessionConfig, staleTime: Infinity, retry: 1 });
+  const cfg = useQuery({ queryKey: ["session-config"], queryFn: api.sessionConfig, staleTime: 30_000, refetchInterval: 30_000, retry: 1 });
   if (cfg.isLoading) return <Centered><Spinner label="Loading" /></Centered>;
   if (cfg.isError) return <Centered><Notice tone="danger" title="The app server could not be reached">{cfg.error.message}</Notice></Centered>;
   const c = cfg.data!;
@@ -58,13 +58,12 @@ function ClerkGate({ config }: { config: SessionConfig }) {
           <Notice tone="danger" title="Access not granted">
             {state.message}
           </Notice>
-          {state.code === "organization_required" || state.code === "not_allowed" ? <OrganizationSwitcher hidePersonal afterSelectOrganizationUrl="/" /> : null}
           <UserButton />
         </div>
       </Centered>
     );
   }
-  return <Shell config={config} account={<><OrganizationSwitcher hidePersonal /><UserButton /></>} />;
+  return <Shell config={config} account={<UserButton />} />;
 }
 
 /** Codes the app's server uses when its connection to the sourcing service is misconfigured. */

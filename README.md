@@ -65,8 +65,7 @@ development-only and are refused when `NODE_ENV=production`.
 | `VITE_CLERK_PUBLISHABLE_KEY` | build time (public) | Publishable key of the chosen Clerk application. Read by Vite at **build** time: rebuild after changing it. |
 | `CLERK_SECRET_KEY` | server secret | Secret key of the **same** Clerk application. |
 | `CLERK_AUTHORIZED_PARTIES` | server | This app's own https origin(s), comma-separated (e.g. the Replit deployment URL). Required in production. |
-| `INTERNAL_APP_ALLOWED_USER_IDS` | server | Approved Clerk user ids (`user_…`), comma-separated. |
-| `INTERNAL_APP_ALLOWED_ORG_IDS` | server | Approved Clerk organization ids (`org_…`); members whose **active** organization is one of them may sign in. At least one of the two allowlists is required. |
+| `INTERNAL_APP_ALLOWED_USER_IDS` | server | Required approved Clerk user ids (`user_…`), comma-separated. Access is user-only; organization settings are ignored. |
 | `PORT`, `HOST` | platform | Defaults 5000 / 0.0.0.0. |
 
 Nothing else belongs here: no provider keys, no OpenRouter or Influencers Club key, no database or
@@ -104,12 +103,10 @@ maximum from the backend (`GET /api/meta` → backend `GET /api/v1/internal-sour
 
 Sample data is never shown instead.
 
-**Sign-in.** Clerk, verified on the server for every API call, plus the allowlist above; organization
-membership is re-checked live with Clerk for every change. The Pluvus operator dashboard uses the same
-pattern. One option is to reuse the operator dashboard's Clerk application and set
-`INTERNAL_APP_ALLOWED_ORG_IDS` to the organization the backend already allowlists as
-`OPERATOR_CLERK_ORG_IDS`; or allowlist Ricky's and Calvin's Clerk user ids. (This repository does
-not record their ids.)
+**Sign-in.** Clerk, verified on the server for every API call, plus the individual-user
+allowlist above. Approved users do not need an active organization. Organization
+membership never grants access. You can reuse the operator dashboard's Clerk application
+and explicitly allowlist the intended users.
 
 ### On the sourcing backend
 
@@ -204,7 +201,7 @@ backend's production database.
 1. Import this repository into Replit.
 2. Secrets: `SOURCING_API_BASE_URL`, `SOURCING_INTERNAL_APP_API_KEY`, `VITE_CLERK_PUBLISHABLE_KEY`,
    `CLERK_SECRET_KEY`, `CLERK_AUTHORIZED_PARTIES` (the deployment's https URL),
-   `INTERNAL_APP_ALLOWED_ORG_IDS` and/or `INTERNAL_APP_ALLOWED_USER_IDS`.
+   `INTERNAL_APP_ALLOWED_USER_IDS`.
 3. Publish → Autoscale. `.replit` already sets build `npm ci && npm run build`, run `npm run start`,
    port 5000 → 80.
 4. Open `/health`, then sign in. A setup screen names anything still missing.
