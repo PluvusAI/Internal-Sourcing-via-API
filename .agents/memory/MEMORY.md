@@ -1,0 +1,1 @@
+- [Access policy](access-policy.md) — use explicitly approved users only; organization-based access is not intended.
