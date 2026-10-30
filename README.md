@@ -32,6 +32,11 @@ moved here with its history. The backend side of PLU-505 is on that repository's
 - **Import list** — choose CSV → name → map identity columns (platform, handle, profile URL, provider
   ID, Pluvus creator ID; or the Sheets per-platform columns) → preview valid / duplicate / invalid /
   ambiguous rows → acknowledge a partial import → open the saved list. Nothing is saved before Import.
+  The dialog includes a downloadable [CSV template](public/creator-list-template.csv). Its header row
+  names the common columns; add one creator per row. The simplest usable row has `platform` and
+  `handle` (for example, `instagram,janedoe`). A profile URL, provider ID, creator ID, or recognised
+  per-platform columns can also identify a creator. Names and emails alone cannot. The backend
+  suggests mappings from other header names, previews every row, and enforces the import rules.
 - **New sourcing list** — autosaved draft (Saving / Saved / Save failed; a stale tab cannot overwrite a
   newer draft), supported criteria only (platforms with follower/engagement ranges, creator location —
   not audience —, language, niche, topic keywords, ideal creator, qualitative fit restrictions, brand

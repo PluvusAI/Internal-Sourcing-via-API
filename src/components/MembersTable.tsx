@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink } from "lucide-react";
+import { Download, ExternalLink, Users } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { MemberView } from "../../server/sourceClient";
 import { api } from "../api";
@@ -15,7 +15,7 @@ const platformLabel = (p: string | null): string => (p && p in PLATFORM_LABELS ?
  * by row id), so it survives paging, refresh, another session and Find more. "Select this page"
  * and "Select all N saved creators" are different actions with different labels.
  */
-export function MembersTable({ listId, kind, live, onSelectionCount }: { listId: string; kind: "imported" | "sourced"; live: boolean; onSelectionCount: (n: number, total: number) => void }) {
+export function MembersTable({ listId, kind, live, onSelectionCount, onExport }: { listId: string; kind: "imported" | "sourced"; live: boolean; onSelectionCount: (n: number, total: number) => void; onExport: (n: number, total: number) => void }) {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<MemberView | null>(null);
   const qc = useQueryClient();
@@ -50,7 +50,7 @@ export function MembersTable({ listId, kind, live, onSelectionCount }: { listId:
   if (q.isLoading) return <div className="empty"><Spinner label="Loading creators" /></div>;
   if (q.isError) return <div className="card-pad"><Notice tone="danger">Could not load creators: {q.error.message}</Notice></div>;
   if (!data || data.total === 0) {
-    return <div className="empty">{live ? "No creators saved yet. Qualified creators appear here as soon as they are saved." : kind === "sourced" ? "No creators were saved by this search." : "This list has no creators."}</div>;
+    return <div className="empty empty-state"><Users size={28} aria-hidden /><strong>{live ? "Looking for creators" : "No creators saved"}</strong><span>{live ? "Qualified creators appear here as soon as they are saved." : kind === "sourced" ? "No creators were saved by this search. Review the latest search above, then use Find more if needed." : "This imported list has no creators. Review its import report above."}</span></div>;
   }
   const allSelected = data.selectedCount === data.total;
 
@@ -59,21 +59,26 @@ export function MembersTable({ listId, kind, live, onSelectionCount }: { listId:
       {pageSelected === rows.length && rows.length > 0 && data.total > rows.length && !allSelected ? (
         <div className="select-banner" role="status">
           All {rows.length} creators on this page are selected.
-          <button type="button" className="link-btn" onClick={() => select.mutate({ selected: true, all: true })}>
+          <button type="button" className="link-btn" disabled={select.isPending} onClick={() => select.mutate({ selected: true, all: true })}>
             Select all {count(data.total)} saved creators
           </button>
         </div>
       ) : null}
       {data.selectedCount > 0 ? (
-        <div className="select-banner" role="status">
-          {count(data.selectedCount)} of {count(data.total)} selected{allSelected ? " (all saved creators, across every page)" : ""}.
-          <button type="button" className="link-btn" onClick={() => select.mutate({ selected: false, all: true })}>
-            Clear selection
-          </button>
+        <div className="select-banner bulk-actions" role="status">
+          <span>{count(data.selectedCount)} of {count(data.total)} selected{allSelected ? " (all saved creators, across every page)" : ""}.</span>
+          <div className="actions">
+            <button type="button" className="btn btn-sm btn-primary" disabled={select.isPending} onClick={() => onExport(data.selectedCount, data.total)}><Download size={14} aria-hidden /> Export selected</button>
+            <button type="button" className="link-btn" disabled={select.isPending} onClick={() => select.mutate({ selected: false, all: true })}>
+              Clear selection
+            </button>
+          </div>
         </div>
       ) : null}
+      {select.isError ? <div className="card-pad"><Notice tone="danger" title="Selection could not be saved">{select.error.message}</Notice></div> : null}
       <div className="table-wrap">
-        <table className="table">
+        <table className="table members-table">
+          <caption className="sr-only">Saved creators with selection, profile, audience metrics, and fit details</caption>
           <thead>
             <tr>
               <th className="check">
@@ -83,6 +88,7 @@ export function MembersTable({ listId, kind, live, onSelectionCount }: { listId:
                   className="checkbox"
                   aria-label={pageSelected === rows.length ? "Unselect this page" : "Select this page"}
                   checked={pageSelected === rows.length && rows.length > 0}
+                  disabled={select.isPending}
                   onChange={() => select.mutate({ selected: pageSelected !== rows.length, memberIds: rows.map((m) => m.id) })}
                 />
               </th>
@@ -98,18 +104,18 @@ export function MembersTable({ listId, kind, live, onSelectionCount }: { listId:
             {rows.map((m) => (
               <tr key={m.id} className={m.selected ? "is-selected" : undefined}>
                 <td className="check">
-                  <input type="checkbox" className="checkbox" aria-label={`Select ${m.displayName ?? m.handle ?? "creator"}`} checked={m.selected} onChange={() => select.mutate({ selected: !m.selected, memberIds: [m.id] })} />
+                  <input type="checkbox" className="checkbox" aria-label={`Select ${m.displayName ?? m.handle ?? "creator"}`} checked={m.selected} disabled={select.isPending} onChange={() => select.mutate({ selected: !m.selected, memberIds: [m.id] })} />
                 </td>
-                <td className="name">
+                <td className="name" data-label="Creator">
                   <button type="button" className="link-btn" style={{ textDecoration: "none", color: "var(--text)" }} onClick={() => setOpen(m)}>
                     {m.displayName ?? m.handle ?? "Unnamed"}
                   </button>
                   {m.accounts.length > 1 ? <div className="cell-sub">+{m.accounts.length - 1} more {m.accounts.length === 2 ? "account" : "accounts"}</div> : null}
                 </td>
-                <td>
+                <td data-label="Platform · handle">
                   {platformLabel(m.platform)} <span className="muted">@{m.handle ?? "—"}</span>
                 </td>
-                <td>
+                <td data-label="Profile">
                   {m.profileUrl ? (
                     <a href={m.profileUrl} target="_blank" rel="noopener noreferrer" className="inline">
                       Open <ExternalLink size={12} aria-hidden />
@@ -119,9 +125,9 @@ export function MembersTable({ listId, kind, live, onSelectionCount }: { listId:
                     <span className="dim">—</span>
                   )}
                 </td>
-                <td className="num">{count(m.followers)}</td>
-                <td className="num">{percent(m.engagementPercent)}</td>
-                <td className="reason">{kind === "sourced" ? m.reason ?? "—" : m.email ?? <span className="dim">—</span>}</td>
+                <td className="num" data-label="Followers">{count(m.followers)}</td>
+                <td className="num" data-label="Engagement">{percent(m.engagementPercent)}</td>
+                <td className="reason" data-label={kind === "sourced" ? "Why they fit" : "Email (from file)"}>{kind === "sourced" ? m.reason ?? "—" : m.email ?? <span className="dim">—</span>}</td>
               </tr>
             ))}
           </tbody>

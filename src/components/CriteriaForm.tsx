@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { cloneElement, useId } from "react";
 import type { SourcingPlatform } from "../../server/sourceClient";
 import { ALL_PLATFORMS, PLATFORM_LABELS, type CriteriaForm as Form, type FormProblems, type PlatformForm } from "../lib/criteria";
 import { TagInput } from "./ui";
@@ -36,18 +36,25 @@ export function CriteriaFormFields({
     set("platforms", has ? form.platforms.filter((x) => x.platform !== p) : [...form.platforms, { platform: p, followersMin: "", followersMax: "", engagementMin: "", engagementMax: "" }]);
   };
   const setPlatform = (p: SourcingPlatform, patch: Partial<PlatformForm>): void => set("platforms", form.platforms.map((x) => (x.platform === p ? { ...x, ...patch } : x)));
-  const field = (key: string, label: string, input: JSX.Element, hint?: string) => (
-    <div className="field">
-      <label htmlFor={`${uid}-${key}`}>{label}</label>
-      {input}
-      {hint ? <span className="hint" id={`${uid}-${key}-hint`}>{hint}</span> : null}
-      {err(key) ? <span className="error">{err(key)}</span> : null}
-    </div>
-  );
+  const field = (key: string, label: string, input: JSX.Element, hint?: string) => {
+    const issue = err(key);
+    const describedBy = [hint ? `${uid}-${key}-hint` : null, issue ? `${uid}-${key}-error` : null].filter(Boolean).join(" ") || undefined;
+    const control = input.type === TagInput
+      ? cloneElement(input, { describedBy, invalid: Boolean(issue) })
+      : cloneElement(input, { "aria-describedby": describedBy, "aria-invalid": issue ? true : undefined });
+    return (
+      <div className="field">
+        <label htmlFor={`${uid}-${key}`}>{label}</label>
+        {control}
+        {hint ? <span className="hint" id={`${uid}-${key}-hint`}>{hint}</span> : null}
+        {issue ? <span className="error" id={`${uid}-${key}-error`}>{issue}</span> : null}
+      </div>
+    );
+  };
 
   return (
     <div className="section">
-      <fieldset className="field" style={{ border: "none", padding: 0, margin: 0 }}>
+      <fieldset className="field" style={{ border: "none", padding: 0, margin: 0 }} aria-describedby={err("platforms") ? `${uid}-platforms-error` : undefined}>
         <legend className="field-label">Platforms</legend>
         <div className="row-gap">
           {ALL_PLATFORMS.map((p) => (
@@ -57,7 +64,7 @@ export function CriteriaFormFields({
             </label>
           ))}
         </div>
-        {err("platforms") ? <span className="error">{err("platforms")}</span> : null}
+        {err("platforms") ? <span className="error" id={`${uid}-platforms-error`}>{err("platforms")}</span> : null}
       </fieldset>
 
       {form.platforms.map((p) => (
@@ -80,6 +87,7 @@ export function CriteriaFormFields({
                   inputMode={k.startsWith("followers") ? "numeric" : "decimal"}
                   value={p[k]}
                   aria-invalid={err(`${p.platform}.${k}`) ? true : undefined}
+                  aria-describedby={err(`${p.platform}.${k}`) ? `${uid}-${p.platform}-${k}-error` : undefined}
                   onChange={(e) => setPlatform(p.platform, { [k]: e.target.value })}
                 />
               </div>
@@ -87,7 +95,7 @@ export function CriteriaFormFields({
           </div>
           {(["followersMin", "followersMax", "engagementMin", "engagementMax"] as const).map((k) =>
             err(`${p.platform}.${k}`) ? (
-              <span className="error" key={k}>
+              <span className="error" id={`${uid}-${p.platform}-${k}-error`} key={k}>
                 {err(`${p.platform}.${k}`)}
               </span>
             ) : null,

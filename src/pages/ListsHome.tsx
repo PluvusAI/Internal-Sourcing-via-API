@@ -1,5 +1,5 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, ArchiveRestore, Copy, Plus, Search, Upload } from "lucide-react";
+import { Archive, ArchiveRestore, ClipboardList, Copy, Plus, Search, Upload } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { ListSummary } from "../../server/sourceClient";
 import { api } from "../api";
@@ -58,6 +58,7 @@ export function ListsHome() {
     <>
       <div className="page-head">
         <div>
+          <span className="eyebrow">Workspace / Creator sourcing</span>
           <h1>Creator lists</h1>
           <p className="context">Imported rosters and sourced batches, named by brand. Pick any of them as exclusions when you source a new list.</p>
         </div>
@@ -84,7 +85,7 @@ export function ListsHome() {
             {data ? `${count(data.total)} ${data.total === 1 ? "list" : "lists"}${urlQ ? ` match “${urlQ}”` : ""}` : ""}
           </span>
           {lists.isFetching && data ? <Spinner label="Refreshing" /> : null}
-          <span style={{ flex: 1 }} />
+          <span className="toolbar-spacer" />
           <label className="inline small">
             <input type="checkbox" className="checkbox" checked={showArchived} onChange={(e) => setParams({ archived: e.target.checked ? "1" : null, page: null })} /> Show archived
           </label>
@@ -102,21 +103,30 @@ export function ListsHome() {
           </div>
         ) : data && data.total === 0 ? (
           urlQ ? (
-            <div className="empty">
-              <span>No list matches “{urlQ}”.</span>
+            <div className="empty empty-state">
+              <Search size={26} aria-hidden />
+              <strong>No matching lists</strong>
+              <span>No list matches “{urlQ}”. Try another brand or list name.</span>
               <button type="button" className="btn" onClick={() => setParams({ q: null, page: null })}>
                 Clear search
               </button>
             </div>
           ) : (
-            <div className="empty">
-              <span>No lists yet. Import an existing creator list, or start a new sourcing list.</span>
+            <div className="empty empty-state">
+              <ClipboardList size={28} aria-hidden />
+              <strong>Your creator lists start here</strong>
+              <span>Import an existing roster or create a sourcing list to find new creators.</span>
+              <div className="actions">
+                <button type="button" className="btn" onClick={() => setDialog({ kind: "import" })}>Import list</button>
+                <button type="button" className="btn btn-primary" onClick={() => setDialog({ kind: "new" })}>New sourcing list</button>
+              </div>
             </div>
           )
         ) : data ? (
           <>
             <div className="table-wrap">
-              <table className="table">
+              <table className="table lists-table">
+                <caption className="sr-only">Creator lists and their current sourcing status</caption>
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -132,15 +142,15 @@ export function ListsHome() {
                 <tbody>
                   {data.lists.map((l) => (
                     <tr key={l.id}>
-                      <td className="name">
+                      <td className="name" data-label="Name">
                         <a href={`/lists/${l.id}`} onClick={linkHandler(`/lists/${l.id}`)}>
                           {l.name}
                         </a>
                         {l.archivedAt ? <div className="cell-sub">Archived</div> : null}
                       </td>
-                      <td>{l.kind === "imported" ? "Imported" : "Sourced"}</td>
-                      <td className="num">{count(l.memberCount)}</td>
-                      <td>
+                      <td data-label="Type">{l.kind === "imported" ? "Imported" : "Sourced"}</td>
+                      <td className="num" data-label="Creators">{count(l.memberCount)}</td>
+                      <td data-label="Status">
                         <StatusBadge status={l.status} />
                         {l.latestOperation && (l.status === "sourcing" || l.status === "queued") ? (
                           <div className="cell-sub">
@@ -148,15 +158,15 @@ export function ListsHome() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="muted">{when(l.updatedAt)}</td>
-                      <td>
-                        <div className="actions" style={{ justifyContent: "flex-end" }}>
+                      <td className="muted" data-label="Updated">{when(l.updatedAt)}</td>
+                      <td className="row-actions">
+                        <div className="actions">
                           <a className="btn btn-sm" href={`/lists/${l.id}`} onClick={linkHandler(`/lists/${l.id}`)}>
                             Open
                           </a>
                           {l.kind === "sourced" && l.status !== "draft" ? (
-                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setDialog({ kind: "derive", from: l })} title="New list using these criteria">
-                              <Copy size={14} aria-hidden /> New list using these criteria
+                            <button type="button" className="btn btn-sm btn-ghost" onClick={() => setDialog({ kind: "derive", from: l })} aria-label={`New list using criteria from ${l.name}`} title="New list using these criteria">
+                              <Copy size={14} aria-hidden /> <span className="label-desktop">New list using these criteria</span><span className="label-mobile">Use criteria</span>
                             </button>
                           ) : null}
                           <button
