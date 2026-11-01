@@ -61,6 +61,7 @@ moved here with its history. The backend side of PLU-505 is on that repository's
   exclusion snapshot, and the honest outcome and counters (excluded / already on list / considered).
 - **Review** — table with page-vs-all selection (kept on the server, so it survives paging, refresh,
   another session and Find more), profile links, a detail drawer that returns to the same place.
+  Newly sourced creators keep their profile photo; anyone without one shows initials.
 - **Find emails** — explicitly retrieve missing emails for one row, the saved selection across pages, or the whole list. Preview eligible/reusable contacts and maximum credits first. Jobs survive refresh, keep partial results at the inherited search/daily caps, preserve supplied emails/manual clears, and never replace creators whose email is unavailable.
 - **Find more** — adds N more with the same criteria and exclusions, always skipping the list's own
   rows. **New list using these criteria** — copies criteria and exclusions and adds the previous list.
@@ -104,8 +105,8 @@ start sourcing, change exclusion lists, or overwrite a typed value automatically
 
 ### Limits live on the sourcing backend
 
-How many new creators one search may ask for — and every spend, page, candidate, model and runtime
-ceiling — is configured **only on the sourcing backend** (PLU-509: the
+One search can ask for up to **150 new creators**. That maximum — and every spend, page, candidate,
+model and runtime ceiling — is configured **only on the sourcing backend** (PLU-509: the
 `SOURCING_INTERNAL_APP_MAX_*` settings, documented in
 [`docs/internal-sourcing-api.md`](https://github.com/PluvusAI/pluvus-workflow-prototype/blob/plu-505-internal-sourcing/docs/internal-sourcing-api.md)). The app learns the current
 maximum from the backend (`GET /api/meta` → backend `GET /api/v1/internal-sourcing/meta` →
@@ -152,15 +153,17 @@ and explicitly allowlist the intended users.
    its general sourcing settings. The proposed operating profile (backend settings, not app ones):
 
    ```dotenv
-   SOURCING_INTERNAL_APP_MAX_TARGET_QUALIFIED=100
+   # Built in: set these only to change them. Each overrides the backend's internal profile.
+   SOURCING_INTERNAL_APP_MAX_TARGET_QUALIFIED=150
    SOURCING_INTERNAL_APP_MAX_CANDIDATES_PER_REQUEST=1000
-   SOURCING_INTERNAL_APP_MAX_EVIDENCE_LOOKUPS_PER_REQUEST=200
-   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_REQUEST=10
-   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_DAY=50
-   SOURCING_INTERNAL_APP_MAX_LLM_USD_PER_REQUEST=0.50
+   SOURCING_INTERNAL_APP_MAX_EVIDENCE_LOOKUPS_PER_REQUEST=500
+   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_REQUEST=20
+   SOURCING_INTERNAL_APP_MAX_LLM_USD_PER_REQUEST=0.75
    SOURCING_INTERNAL_APP_MAX_PAGES_PER_REQUEST=40
+   SOURCING_INTERNAL_APP_MAX_RUNTIME_SECONDS=1800
+   # Follow SOURCING_SERVICE_* unless set.
+   SOURCING_INTERNAL_APP_MAX_CREDITS_PER_DAY=150
    SOURCING_INTERNAL_APP_MAX_PAGE_SIZE=25
-   SOURCING_INTERNAL_APP_MAX_RUNTIME_SECONDS=1200
    SOURCING_INTERNAL_APP_MAX_QUEUE_WAIT_SECONDS=3600
    SOURCING_INTERNAL_APP_MAX_ACTIVE_REQUESTS=2
    ```
@@ -275,3 +278,7 @@ SOURCING_BACKEND_DIR=../pluvus-workflow-prototype npm test
 ### Email enrichment rollout
 
 Find emails needs backend migration `20261112120000_internal_email_enrichment`, the backend email worker and scheduler, and the updated internal API. Deploy the migration/backend first, then rebuild/deploy this app. The provider key stays only on the sourcing backend. See `docs/email-enrichment.md` for verification and rollout.
+
+### Creator photos rollout
+
+The provider's picture links expire, so the sourcing backend now keeps a copy of each new creator's photo in its Postgres database, and this app reads it through the signed-in `GET /api/members/:memberId/picture`. Deploy the backend first with migration `20261122120000_internal_creator_pictures`, then this app. No new settings. Creators saved before this keep initials: their links have expired and cannot be recovered without paying for them again.

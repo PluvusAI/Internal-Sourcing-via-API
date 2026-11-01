@@ -190,6 +190,8 @@ export interface MemberView {
   followers: number | null;
   engagementPercent: number | null;
   pictureUrl: string | null;
+  /** A saved copy exists: read it from GET /members/:memberId/picture rather than pictureUrl, which expires. */
+  pictureStored: boolean;
   reason: string | null;
   email: string | null;
   emailLookupStatus?: string;
@@ -428,6 +430,12 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
       const disposition = res.headers.get("content-disposition") ?? "";
       const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "creators.csv";
       return { csv: await res.text(), count: Number(res.headers.get("x-export-count") ?? "0"), filename };
+    },
+    /** A creator's saved picture: its bytes and image type. Reading never spends. */
+    async memberPicture(memberId: string): Promise<{ bytes: ArrayBuffer; contentType: string }> {
+      const res = await send("GET", `/members/${id(memberId)}/picture`, undefined, {});
+      if (!res.ok) return failure(res);
+      return { bytes: await res.arrayBuffer(), contentType: res.headers.get("content-type") ?? "application/octet-stream" };
     },
     previewExclusions: (listIds: string[]) => call<ExclusionPreview>("POST", "/exclusions/preview", { listIds }),
     previewImport: (csv: string, mapping?: ImportMapping | null) => call<ImportReport>("POST", "/imports/preview", { csv, mapping: mapping ?? null }),
