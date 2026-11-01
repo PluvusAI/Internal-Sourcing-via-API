@@ -102,6 +102,7 @@ export const api = {
   addCreator: (id: string, body: CreatorInput) => json<{ member: MemberView; existing: boolean; restored: boolean }>("POST", `/lists/${id}/members`, body),
   updateCreator: (id: string, memberId: string, body: CreatorDetailsPatch) => json<{ member: MemberView }>("PATCH", `/lists/${id}/members/${memberId}`, body),
   removeCreators: (id: string, memberIds: string[]) => json<{ removedCount: number }>("DELETE", `/lists/${id}/members`, { memberIds }),
+  memberPicture: async (memberId: string): Promise<Blob> => (await send("GET", `/members/${memberId}/picture`)).blob(),
   members: (id: string, p: { page?: number; pageSize?: number }) => json<MemberPage>("GET", `/lists/${id}/members${qs(p)}`),
   selection: (id: string) => json<{ memberIds: string[]; selectedCount: number }>("GET", `/lists/${id}/selection`),
   setSelection: (id: string, body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) => json<{ selectedCount: number }>("PUT", `/lists/${id}/selection`, body),

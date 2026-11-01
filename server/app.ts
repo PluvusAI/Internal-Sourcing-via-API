@@ -151,6 +151,15 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
     const id = idParam(req, res);
     if (id) res.json(await source().addCreator(id, req.body, actor(res)));
   }));
+  api.get("/members/:memberId/picture", asyncRoute(async (req, res) => {
+    const memberId = idParam(req, res, "memberId");
+    if (!memberId) return;
+    const picture = await source().memberPicture(memberId);
+    res.setHeader("Content-Type", picture.contentType);
+    // A saved picture never changes, and this one answer is safe to keep in the signed-in browser.
+    res.setHeader("Cache-Control", "private, max-age=86400");
+    res.send(Buffer.from(picture.bytes));
+  }));
   api.patch("/lists/:id/members/:memberId", asyncRoute(async (req, res) => {
     const id = idParam(req, res);
     const memberId = id ? idParam(req, res, "memberId") : null;

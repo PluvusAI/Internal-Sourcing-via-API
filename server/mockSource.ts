@@ -159,7 +159,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         displayName: `Sample Creator ${n}`,
         followers: 10_000 + n * 1_000,
         engagementPercent: null,
-        pictureUrl: null,
+        pictureUrl: null, pictureStored: false,
         reason: "Sample data: not a real fit evaluation.",
         email: null,
         location: null,
@@ -260,6 +260,10 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
   return {
     setMaxTargetCount(n: number) {
       maxTarget = n;
+    },
+    async memberPicture() {
+      // Sample creators have no saved pictures.
+      return fail(404, "picture_not_found", "This creator has no saved picture.");
     },
     async previewEmails(listId, scope) {
       const l = get(listId); if (l.archivedAt) fail(409, "list_archived", "Restore this list before finding emails.");
@@ -400,7 +404,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         removedRows.get(listId)!.delete(removed.id); members.set(listId, [...membersOf(listId), removed]);
         return { member: removed, existing: false, restored: true };
       }
-      const member: MemberView = { id: id(), source: "import", operationId: null, platform, handle, profileUrl, displayName: body.displayName ?? null, followers: null, engagementPercent: null, pictureUrl: null, reason: null, email: body.email ?? null, location: body.location ?? null, language: body.language ?? null, accounts: [{ platform, handle, link: profileUrl, followers: null, engagementPercent: null }], selected: false, importRow: null, createdAt: now() };
+      const member: MemberView = { id: id(), source: "import", operationId: null, platform, handle, profileUrl, displayName: body.displayName ?? null, followers: null, engagementPercent: null, pictureUrl: null, pictureStored: false, reason: null, email: body.email ?? null, location: body.location ?? null, language: body.language ?? null, accounts: [{ platform, handle, link: profileUrl, followers: null, engagementPercent: null }], selected: false, importRow: null, createdAt: now() };
       members.set(listId, [...membersOf(listId), member]); l.updatedAt = now();
       return { member, existing: false, restored: false };
     },
@@ -544,7 +548,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
           displayName: v.name,
           followers: null,
           engagementPercent: null,
-          pictureUrl: null,
+          pictureUrl: null, pictureStored: false,
           reason: null,
           email: v.email,
           location: null,

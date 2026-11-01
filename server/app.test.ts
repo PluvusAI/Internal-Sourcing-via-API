@@ -334,6 +334,26 @@ test("AI suggestions use the app's server-held OpenRouter key and never create o
   assert.ok(!status.includes(aiKey));
 });
 
+test("a saved picture needs sign-in, keeps its image type, and may be cached by that browser alone", async () => {
+  const jpeg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+  const fake = fakeSource((r) => (r.url.endsWith("/members/member1234abcd/picture") ? { status: 200, body: jpeg.toString("latin1"), headers: { "content-type": "image/jpeg" } } : { status: 404, body: { error: { code: "picture_not_found", message: "This creator has no saved picture." } } }));
+  const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
+  assert.equal((await fetch(`${base}/api/members/member1234abcd/picture`)).status, 401, "an <img> without the session token gets nothing");
+  assert.equal(fake.calls.length, 0);
+
+  const saved = await fetch(`${base}/api/members/member1234abcd/picture`, { headers: authed("no-org") });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.headers.get("content-type"), "image/jpeg");
+  assert.equal(saved.headers.get("cache-control"), "private, max-age=86400");
+  assert.equal(fake.calls[0]!.method, "GET");
+
+  const missing = await fetch(`${base}/api/members/other1234abcd/picture`, { headers: authed("no-org") });
+  assert.equal(missing.status, 404);
+  assert.equal(((await missing.json()) as { error: { code: string } }).error.code, "picture_not_found");
+  assert.equal((await fetch(`${base}/api/members/not!valid/picture`, { headers: authed("no-org") })).status, 404, "a malformed id never reaches the source");
+  assert.equal(fake.calls.length, 2);
+});
+
 test("creator editing routes preserve exact list/member scope and write attribution", async () => {
   const fake = fakeSource();
   const base = await serve(createApp(loadConfig(liveEnv), { source: fake.client, verify: allowVerify }));
