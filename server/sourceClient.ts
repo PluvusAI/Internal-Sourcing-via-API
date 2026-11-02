@@ -89,9 +89,22 @@ export interface OperationCounters {
   considered: number;
 }
 
+/** Why a search's free read of our database used or left each creator it read; the numbers add up to what it read. */
+export interface StoredRead {
+  unusable: number;
+  rejected: number;
+  unproven: number;
+  excluded: number;
+  notAFit: number;
+  noDetails: number;
+  noWordMatch: number;
+  overLimit: number;
+  picked: number;
+}
+
 export interface OperationSources {
   /** Null for a search from before this was recorded. */
-  database: { checked: number; matched: number } | null;
+  database: { checked: number; matched: number; storedRead?: StoredRead } | null;
   influencersClub: { calls: number; discoveryCalls: number; evidenceCalls: number; creatorsPulled: number; credits: number; creditLimit: number };
 }
 
