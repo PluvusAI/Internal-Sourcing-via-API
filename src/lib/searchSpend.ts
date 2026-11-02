@@ -21,11 +21,11 @@ export function spendingAhead(op: OperationView): boolean {
 
 /** Why a search's free read of our database left creators, in plain words, biggest first. */
 const STORED_READ_REASONS: Array<[keyof StoredRead, string]> = [
-  ["unproven", "Location or language not proven"],
+  ["unproven", "Required filter not proven, usually location or language"],
   ["rejected", "Outside this search’s filters"],
   ["excluded", "On a list you excluded"],
   ["notAFit", "Already judged not a fit for this search"],
-  ["noDetails", "Never checked, so nothing to judge"],
+  ["noDetails", "No saved details to judge"],
   ["noWordMatch", "Profile doesn’t mention this search’s words"],
   ["overLimit", "Over this search’s limit"],
   ["unusable", "No Influencers Club ID"],

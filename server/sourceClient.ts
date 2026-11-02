@@ -89,7 +89,7 @@ export interface OperationCounters {
   considered: number;
 }
 
-/** Why a search's free read of our database used or left each creator it read; the numbers add up to what it read. */
+/** Why a search's free read of our database used or left each creator; the numbers add up to that read, which `checked` can exceed. */
 export interface StoredRead {
   unusable: number;
   rejected: number;
