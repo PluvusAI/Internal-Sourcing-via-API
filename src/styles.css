@@ -243,6 +243,7 @@ table.table { width: 100%; border-collapse: collapse; }
 .tag button { border: none; background: transparent; cursor: pointer; padding: 0 4px; color: var(--textMuted); }
 
 .platform-block { border: 1px solid var(--hairline); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+.platform-block:not([open]) { gap: 0; }
 .platform-block summary { cursor: pointer; }
 .import-mapping-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .saving { font-size: 12px; color: var(--textMuted); display: inline-flex; gap: 6px; align-items: center; }
@@ -542,6 +543,21 @@ code.headers { display: block; white-space: pre-wrap; font-size: 12px; max-heigh
 .search-metric dd > strong { font-size: 30px; font-weight: 600; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .search-metric dd > span { font-size: 11px; font-weight: 400; color: var(--textMuted); letter-spacing: 0; }
 .metric-qualified { background: var(--successWash); border-color: transparent; }
+.search-sources { display: flex; flex-direction: column; gap: 10px; }
+.search-sources h3 { margin: 6px 0 0; font-size: 13px; font-weight: 600; }
+.search-sources > p { margin: 2px 0 0; }
+.search-sources .metric-grid { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); margin: 0; }
+.credit-meter { display: flex; flex-direction: column; gap: 12px; padding: 18px; border: 1px solid var(--hairline); border-radius: 10px; }
+.credit-meter-head { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 4px 16px; }
+.credit-meter-figure { display: flex; flex-direction: column; gap: 8px; }
+.credit-meter-figure > span { font-size: 12px; font-weight: 500; color: var(--textMuted); }
+.credit-meter-figure > strong { font-size: 30px; font-weight: 600; letter-spacing: -.04em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.credit-meter-figure small { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--textMuted); }
+.credit-meter[data-ahead="true"] .search-progress-track > span { background: var(--warning); }
+.export-option { align-items: flex-start; gap: 8px; }
+.export-option input { margin-top: 3px; }
+.export-option > span { display: flex; flex-direction: column; gap: 1px; }
+.export-option strong { font-weight: 500; }
 .metric-qualified dd > strong { color: var(--success); }
 .search-context { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 20px; }
 .search-context .kv { margin: 4px 0; font-size: 12px; line-height: 1.7; grid-template-columns: 136px minmax(0, 1fr); gap: 12px; }

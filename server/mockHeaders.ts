@@ -32,3 +32,19 @@ export const MOCK_SHEETS_HEADERS: string[] = [
   "Client Product", "Client Sturcture", "Onboarding Link", "Email Thread ID", "Team Contact Name",
   "Thread Status", "ReplyDate", "FollowUp1Date", "FollowUp2Date", "Promo Code",
 ];
+
+export const MOCK_MASTER_HEADERS = [
+  ...MOCK_SHEETS_HEADERS.slice(0, -1),
+  "",
+  "",
+  "pluvus_priority",
+  "pluvus_qualifying_platform",
+  "pluvus_qualifying_followers",
+  "pluvus_band",
+  "pluvus_has_youtube",
+  "pluvus_fit_score",
+  "pluvus_role",
+  "pluvus_content_signals",
+  "pluvus_audience",
+  "pluvus_note",
+];

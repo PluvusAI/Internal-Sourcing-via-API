@@ -78,23 +78,23 @@ try {
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: join(shots, '04-results-phone-dark.png'), fullPage: true, animations: 'disabled' });
-  for (const format of ['default', 'sheets']) {
+  for (const format of ['default', 'master']) {
     const res = await fetch(`${base}/api/lists/${list.id}/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scope: 'all', format }) });
     assert.ok(res.ok); const csv = await res.text(); assert.match(csv, /supplied@example.com/); assert.match(csv, new RegExp(`${sourced[0].handle}@example.com`));
     assert.match(csv, /23456/);
-    if (format === 'sheets') { assert.match(csv, /instagram_media_count/); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/); }
+    if (format === 'master') { assert.match(csv, /instagram_media_count/); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/); }
   }
   const beforeExport = await api(`/lists/${list.id}/email-jobs`);
   await page.getByRole('button', { name: 'Export selected', exact: true }).click();
   const exportDialog = page.getByRole('dialog');
-  await exportDialog.getByRole('radio', { name: /Full details/ }).waitFor();
-  assert.ok(await exportDialog.getByRole('radio', { name: /Full details/ }).isChecked());
+  await exportDialog.getByRole('radio', { name: /Master list/ }).waitFor();
+  assert.ok(await exportDialog.getByRole('radio', { name: /Master list/ }).isChecked());
   const request = page.waitForRequest(r => r.method() === 'POST' && r.url().endsWith(`/lists/${list.id}/export`));
   const downloaded = page.waitForEvent('download');
   await exportDialog.getByRole('button', { name: 'Download CSV', exact: true }).click();
-  const sent = (await request).postDataJSON(); assert.equal(sent.format, 'sheets'); assert.equal(sent.scope, 'selected');
+  const sent = (await request).postDataJSON(); assert.equal(sent.format, 'master'); assert.equal(sent.scope, 'selected');
   const csv = readFileSync(await (await downloaded).path(), 'utf8');
-  assert.equal(csv.split('\r\n')[0].replace(/^\uFEFF/, '').split(',').length, 93);
+  assert.equal(csv.split('\r\n')[0].replace(/^\uFEFF/, '').split(',').length, 104);
   assert.match(csv, new RegExp(`${sourced[0].handle}@example.com`)); assert.match(csv, /Paid profile details/); assert.match(csv, /,77,/);
   assert.doesNotMatch(csv, /supplied@example.com/, 'selected export includes only the selected sourced profiles');
   await exportDialog.getByRole('button', { name: 'Close', exact: true }).last().click();
