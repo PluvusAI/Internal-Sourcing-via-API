@@ -178,7 +178,7 @@ export function StopSearchDialog({ listId, listName, operationId, onClose }: { l
         </>
       }
     >
-      <p>Creators already saved stay on <strong>{listName}</strong>. Anything it’s doing right now finishes first, so credits and creators may still go up slightly.</p>
+      <p>Creators already saved stay on <strong>{listName}</strong>. Anything it’s doing right now finishes first, so credits may still go up slightly.</p>
       <Notice tone="neutral">You can’t restart a stopped search. <strong>Find more</strong> carries on with the same filters and reuses results already paid for where it can. To change the filters, use <strong>New list using these criteria</strong>.</Notice>
       {stop.isError ? <Notice tone="danger">{errorText(stop.error)}</Notice> : null}
     </Modal>
