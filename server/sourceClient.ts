@@ -157,6 +157,10 @@ export interface ImportReport {
   rows: ImportReportRow[];
   needsAcknowledgement: boolean;
   sample: Array<{ row: number; identity: string; displayName: string | null; email: string | null }>;
+  /** The columns that name an account on each platform, so the mapping can be shown for review. */
+  networkColumns: Array<{ platform: IdentityPlatform; username: string | null; link: string | null }>;
+  /** The file has exactly the columns of the standard creator template. */
+  standardTemplate: boolean;
 }
 
 export interface ImportReportView {
