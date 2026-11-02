@@ -230,6 +230,11 @@ export function createApp(cfg: AppConfig, deps: AppDeps): Express {
       if (id && op) res.json(await source().getOperation(id, op));
     }),
   );
+  api.post("/lists/:id/operations/:operationId/stop", asyncRoute(async (req, res) => {
+    const id = idParam(req, res);
+    const op = id ? idParam(req, res, "operationId") : null;
+    if (id && op) res.json(await source().stopOperation(id, op, actor(res)));
+  }));
   api.post("/lists/:id/email-jobs/preview", asyncRoute(async (req, res) => {
     const id = idParam(req, res); if (id) res.json(await source().previewEmails(id, req.body));
   }));

@@ -165,8 +165,12 @@ test("each UI endpoint calls exactly one source endpoint, with the server-held k
   assert.equal(exp.headers.get("x-export-count"), "1");
   assert.match(exp.headers.get("content-disposition") ?? "", /brand-a-all-2026-10-28\.csv/);
   assert.match(await exp.text(), /email,first_name/);
+  await fetch(`${base}/api/lists/abcdefgh1234/operations/opabcdefgh12/stop`, { method: "POST", headers: authed(), body: "{}" });
 
-  assert.equal(fake.calls.length, 3);
+  assert.equal(fake.calls.length, 4);
+  assert.equal(fake.calls[3]!.url, "https://sourcing.example.test/api/v1/internal-sourcing/lists/abcdefgh1234/operations/opabcdefgh12/stop");
+  assert.equal(fake.calls[3]!.method, "POST");
+  assert.equal(fake.calls[3]!.headers["x-internal-user"], "user_ricky");
   assert.equal(fake.calls[0]!.url, "https://sourcing.example.test/api/v1/internal-sourcing/lists?q=Brand+A&page=2&eligible=1");
   for (const c of fake.calls) assert.equal(c.headers["authorization"], `Bearer ${KEY}`);
   assert.equal(fake.calls[1]!.headers["x-internal-user"], "user_ricky");

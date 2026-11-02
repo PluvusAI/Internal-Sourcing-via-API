@@ -5,7 +5,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
 import { CRITERIA_ICONS, CriteriaFormFields, PLATFORM_ICONS } from "../components/CriteriaForm";
-import { ExportDialog, FindMoreDialog, NewListDialog } from "../components/Dialogs";
+import { ExportDialog, FindMoreDialog, NewListDialog, StopSearchDialog } from "../components/Dialogs";
 import { ExclusionPicker } from "../components/ExclusionPicker";
 import { CreatorManagement } from "../components/CreatorManagement";
 import { RemoveListAction } from "../components/CreatorDialogs";
@@ -16,6 +16,7 @@ import { count, isActive, pollMs, progressText, when } from "../lib/format";
 import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
+import { credits, creditsPerSaved, sourceTotals, spendingAhead } from "../lib/searchSpend";
 import { useMeta, useRefreshMeta } from "../meta";
 import { libraryHref, listReturnHref, linkHandler, navigate, parseRoute, registerNavigationBlocker, setParams, useLocation, type NavigationAttempt } from "../router";
 
@@ -566,10 +567,11 @@ function RenameTitle({ list }: { list: ListDetail }) {
 
 function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationView | null }) {
   const consideredTotal = list.operations.reduce((total, operation) => total + operation.counters.considered, 0);
+  const totals = sourceTotals(list);
   return (
     <div className="search-summary">
       {latest ? <section className="card search-overview" aria-label="Search progress">
-        <OperationFacts op={latest} />
+        <OperationFacts op={latest} list={list} />
       </section> : null}
       <details className="search-details">
       <summary><ListFilter size={16} aria-hidden /><strong>Search criteria & activity</strong><span className="muted small">{list.operations.length} {list.operations.length === 1 ? "search" : "searches"} · {count(consideredTotal)} considered in total</span></summary>
@@ -617,6 +619,10 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
           <dt>Excluded at start</dt><dd>{count(latest.excludedCreatorCount)} unique creators from {latest.excludedLists.length} {latest.excludedLists.length === 1 ? "list" : "lists"}</dd>
           <dt>Already saved at start</dt><dd>{count(latest.ownMemberCount)} creators</dd>
           <dt>Total considered</dt><dd>{count(consideredTotal)} across {list.operations.length} {list.operations.length === 1 ? "search" : "searches"}</dd>
+          <dt>Credits used</dt><dd>{credits(totals.searchCredits + totals.emailCredits)} total · {credits(totals.searchCredits)} on searches · {credits(totals.emailCredits)} on Find emails</dd>
+          <dt>Influencers Club API calls</dt><dd>{count(totals.searchCalls + totals.emailCalls)} total · {count(totals.searchCalls)} for searches · {count(totals.emailCalls)} for Find emails</dd>
+          <dt>Pulled from Influencers Club</dt><dd>{count(totals.creatorsPulled)} creators</dd>
+          <dt>Checked in our database</dt><dd>{count(totals.databaseChecked)} creators{totals.unrecordedSearches > 0 ? ` (${totals.unrecordedSearches === 1 ? "1 older search" : `${totals.unrecordedSearches} older searches`} not recorded)` : ""}</dd>
         </dl> : <span className="muted">No search yet.</span>}
         {list.operations.length > 1 ? (
           <details>
@@ -624,7 +630,7 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
             <ul className="stack" style={{ paddingLeft: 18 }}>
               {list.operations.map((o) => (
                 <li key={o.id}>
-                  {o.kind === "initial" ? "First search" : "Find more"} · {when(o.createdAt)} · {progressText(o)} · <StatusBadge status={o.listStatus} />
+                  {o.kind === "initial" ? "First search" : "Find more"} · {when(o.createdAt)} · {progressText(o)}{o.sources ? ` · ${credits(o.sources.influencersClub.credits)} credits` : ""} · <StatusBadge status={o.listStatus} />
                 </li>
               ))}
             </ul>
@@ -637,16 +643,50 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
   );
 }
 
-function OperationFacts({ op }: { op: OperationView }) {
+/** Credits first, as one figure against its limit; then where the search looked, in the order it looks. */
+function SourceFacts({ op, running, onStop }: { op: OperationView; running: boolean; onStop: () => void }) {
+  // Absent only while an older sourcing backend is still live.
+  if (!op.sources) return null;
+  const { database, influencersClub: ic } = op.sources;
+  const perSaved = creditsPerSaved(op);
+  const ahead = running && spendingAhead(op);
+  return (
+    <section className="search-sources" aria-label="Credits and sources">
+      <h3>Credits and sources</h3>
+      <div className="credit-meter" data-ahead={ahead ? "true" : undefined}>
+        <div className="credit-meter-head">
+          <div className="credit-meter-figure"><span>Credits used</span><strong>{credits(ic.credits)}<small> of {count(ic.creditLimit)}</small></strong></div>
+          <span className="muted small">{credits(Math.max(0, ic.creditLimit - ic.credits))} left{perSaved !== null ? ` · ${credits(perSaved)} per saved creator` : ""}</span>
+        </div>
+        <div className="search-progress-track" role="progressbar" aria-label="Credits used" aria-valuemin={0} aria-valuemax={ic.creditLimit} aria-valuenow={Math.min(ic.credits, ic.creditLimit)} aria-valuetext={`${credits(ic.credits)} of ${count(ic.creditLimit)} credits used`}><span style={{ width: `${ic.creditLimit > 0 ? Math.min(100, ic.credits / ic.creditLimit * 100) : 0}%` }} /></div>
+      </div>
+      {ahead ? (
+        <div role="status"><Notice tone="warning" title="Spending faster than it’s finding">
+          {count(op.admittedCount)} of {count(op.targetCount)} creators saved so far. If the filters look too tight, stop now and keep what it found. <button type="button" className="link-btn" onClick={onStop}>Stop search</button>
+        </Notice></div>
+      ) : null}
+      <p className="muted small">Each search checks our database first, which uses no credits, then pays Influencers Club only for what’s still missing.</p>
+      <dl className="metric-grid">
+        <div className="search-metric"><dt>Checked in our database</dt><dd><strong>{database ? count(database.checked) : "—"}</strong><span>{database ? `${count(database.matched)} matched this search` : "Not recorded for this older search"}</span></dd></div>
+        <div className="search-metric"><dt>Pulled from Influencers Club</dt><dd><strong>{count(ic.creatorsPulled)}</strong><span>Creators in the results we paid for</span></dd></div>
+        <div className="search-metric"><dt>Influencers Club API calls</dt><dd><strong>{count(ic.calls)}</strong><span>{count(ic.discoveryCalls)} {ic.discoveryCalls === 1 ? "page" : "pages"} of results · {count(ic.evidenceCalls)} profile {ic.evidenceCalls === 1 ? "check" : "checks"}</span></dd></div>
+      </dl>
+    </section>
+  );
+}
+
+function OperationFacts({ op, list }: { op: OperationView; list: ListDetail }) {
+  const [stopping, setStopping] = useState(false);
   const running = op.status === "queued" || op.status === "running";
   const progress = op.targetCount > 0 ? Math.min(100, Math.max(0, op.admittedCount / op.targetCount * 100)) : 0;
   return (
     <div className="operation-facts">
       <div className="search-progress-head">
-        <div><span className="eyebrow">{running ? "Search in progress" : "Latest search"}</span><h2>{op.status === "queued" ? "Your search is queued" : running ? "Finding your next creators" : op.listStatus === "complete" ? "Your creator search is complete" : op.listStatus === "failed" ? "The search stopped" : "Search finished with fewer matches"}</h2><p className="muted small">{running ? "You can leave this page. Results are saved as they qualify." : op.admittedCount > 0 ? "Your saved creators are ready to review below." : "No new creators were saved. Review the search outcome below."}</p></div>
+        <div><span className="eyebrow">{running ? "Search in progress" : "Latest search"}</span><h2>{op.status === "queued" ? "Your search is queued" : running ? "Finding your next creators" : op.outcome?.code === "stopped_by_user" ? "You stopped this search" : op.listStatus === "complete" ? "Your creator search is complete" : op.listStatus === "failed" ? "The search stopped" : "Search finished with fewer matches"}</h2><p className="muted small">{running ? "You can leave this page. Results are saved as they qualify." : op.admittedCount > 0 ? "Your saved creators are ready to review below." : "No new creators were saved. Review the search outcome below."}</p></div>
         <div className="search-progress-status">
         <StatusBadge status={op.listStatus} />
         {running ? <Spinner label="Search in progress" /> : null}
+        {running ? <button type="button" className="btn btn-sm btn-danger" onClick={() => setStopping(true)}>Stop search</button> : null}
         </div>
       </div>
       <div className="search-progress-label"><strong>{progressText(op)}</strong><span className="muted small">{count(op.targetCount)} requested this search</span></div>
@@ -657,8 +697,10 @@ function OperationFacts({ op }: { op: OperationView }) {
         <div className="search-metric"><dt>Skipped by exclusions</dt><dd><strong>{count(op.counters.excluded)}</strong><span>From selected lists</span></dd></div>
         <div className="search-metric"><dt>Already on this list</dt><dd><strong>{count(op.counters.duplicates)}</strong><span>Duplicates skipped</span></dd></div>
       </dl>
+      <SourceFacts op={op} running={running} onStop={() => setStopping(true)} />
       {op.status === "queued" ? <Notice tone="neutral">Waiting for the sourcing service to start this search. Counters update as creators are processed.</Notice> : null}
-      {op.outcome ? <Notice tone={op.listStatus === "complete" ? "success" : op.listStatus === "failed" ? "danger" : "warning"}>{op.outcome.message}</Notice> : null}
+      {op.outcome ? <Notice tone={op.outcome.code === "stopped_by_user" ? "neutral" : op.listStatus === "complete" ? "success" : op.listStatus === "failed" ? "danger" : "warning"}>{op.outcome.message}{op.outcome.code === "stopped_by_user" ? " Use Find more to carry on with the same filters, or New list using these criteria to change them." : ""}</Notice> : null}
+      {stopping && running ? <StopSearchDialog listId={list.id} listName={list.name} operationId={op.id} onClose={() => setStopping(false)} /> : null}
     </div>
   );
 }

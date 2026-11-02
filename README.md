@@ -65,8 +65,10 @@ moved here with its history. The backend side of PLU-505 is on that repository's
 - **Find emails** — explicitly retrieve missing emails for one row, the saved selection across pages, or the whole list. Preview eligible/reusable contacts and maximum credits first. Jobs survive refresh, keep partial results at the inherited search/daily caps, preserve supplied emails/manual clears, and never replace creators whose email is unavailable.
 - **Find more** — adds N more with the same criteria and exclusions, always skipping the list's own
   rows. **New list using these criteria** — copies criteria and exclusions and adds the previous list.
-- **Export** — selected (N) or all (N), compact 20-column or exact 93-column Sheets template with the
-  column order shown; never searches, looks up contacts or creates a saved subset.
+- **Stop search** — ends a running search and keeps what it saved. The page shows its credits, Influencers
+  Club calls, creators pulled and database creators as it runs, and warns when credits outrun creators found.
+- **Export** — selected (N) or all (N), compact 20-column or the exact 104-column master list template with
+  the column order shown; never searches, looks up contacts or creates a saved subset.
 
 ## Configuration
 

@@ -108,6 +108,7 @@ export const api = {
   setSelection: (id: string, body: { selected: boolean; all: true } | { selected: boolean; memberIds: string[] }) => json<{ selectedCount: number }>("PUT", `/lists/${id}/selection`, body),
   startOperation: (id: string, body: { idempotencyKey: string; kind: "initial" | "find_more"; targetCount?: number; baseRevision?: number }) =>
     json<{ operation: OperationView; idempotentReplay: boolean }>("POST", `/lists/${id}/operations`, body),
+  stopOperation: (id: string, operationId: string) => json<{ operation: OperationView; stopped: boolean }>("POST", `/lists/${id}/operations/${operationId}/stop`, {}),
   previewEmails: (id: string, scope: EmailScope) => json<EmailPreview>("POST", `/lists/${id}/email-jobs/preview`, scope),
   startEmailJob: (id: string, body: { memberIds: string[]; maxCredits: number; idempotencyKey: string }) => json<{ job: EmailJobView; idempotentReplay: boolean }>("POST", `/lists/${id}/email-jobs`, body),
   emailJob: (id: string) => json<{ job: EmailJobView | null }>("GET", `/lists/${id}/email-jobs`),

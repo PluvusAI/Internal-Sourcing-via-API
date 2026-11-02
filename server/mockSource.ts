@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { MOCK_DEFAULT_HEADERS, MOCK_SHEETS_HEADERS } from "./mockHeaders.js";
+import { MOCK_DEFAULT_HEADERS, MOCK_MASTER_HEADERS, MOCK_SHEETS_HEADERS } from "./mockHeaders.js";
 import {
   InternalSourcingApiError,
   type EmailJobView,
@@ -104,6 +104,10 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     if (!l) return { id: listId, name: null, kind: null, status: null, memberCount: 0, archived: false, missing: true };
     return { id: l.id, name: l.name, kind: l.kind, status: statusOf(l), memberCount: membersOf(l.id).length, archived: l.archivedAt !== null, missing: false };
   };
+  const emailLookupsOf = (listId: string): ListDetail["emailLookups"] => {
+    const spent = [...emailHistory.values()].filter((h) => h.listId === listId).reduce((n, h) => n + h.job.creditsSpent, 0);
+    return { calls: Math.round(spent / 0.2), credits: +spent.toFixed(4) };
+  };
   const detail = (l: MockList): ListDetail => {
     const operations = [...ops.values()].filter((o) => o.listId === l.id).map((o) => o.view);
     return {
@@ -117,6 +121,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       importReport: l.importReport,
       operations,
       activeOperationId: operations.find((o) => o.status === "queued" || o.status === "running")?.id ?? null,
+      emailLookups: emailLookupsOf(l.id),
     };
   };
   const get = (listId: string): MockList => (!deletedLists.has(listId) ? lists.get(listId) : null) ?? fail(404, "list_not_found", "No such list.");
@@ -141,6 +146,14 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       return;
     }
     const list = membersOf(op.listId);
+    // Sample figures for the credits panel: one bought page and a few evidence lookups per read.
+    const paid = v.sources.influencersClub;
+    paid.discoveryCalls++;
+    paid.evidenceCalls += 4;
+    paid.calls = paid.discoveryCalls + paid.evidenceCalls;
+    paid.creatorsPulled += 25;
+    paid.credits = +(paid.credits + 0.37).toFixed(2);
+    v.sources.database = { checked: (v.sources.database?.checked ?? 0) + 40, matched: (v.sources.database?.matched ?? 0) + 6 };
     for (let i = 0; i < 2 && v.admittedCount < v.targetCount && sampleSeq < 60; i++) {
       const n = sampleSeq++;
       const platform: Platform = PLATFORMS[n % PLATFORMS.length]!;
@@ -317,6 +330,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         exportFormats: {
           default: { headers: MOCK_DEFAULT_HEADERS, filled: MOCK_DEFAULT_HEADERS },
           sheets: { headers: MOCK_SHEETS_HEADERS, filled: MOCK_SHEETS_HEADERS.slice(0, 40) },
+          master: { headers: MOCK_MASTER_HEADERS, filled: MOCK_MASTER_HEADERS.slice(0, 40) },
         },
       };
     },
@@ -472,6 +486,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         ownMemberCount: membersOf(l.id).length,
         outcome: null,
         counters: { excluded: 0, duplicates: 0, considered: 0 },
+        sources: { database: { checked: 0, matched: 0 }, influencersClub: { calls: 0, discoveryCalls: 0, evidenceCalls: 0, creatorsPulled: 0, credits: 0, creditLimit: 20 } },
         criteria: l.criteria,
         pollAfterSeconds: 10,
         createdAt: now(),
@@ -481,6 +496,20 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       l.criteriaLockedAt ??= now();
       l.updatedAt = now();
       return { operation: view, idempotentReplay: false };
+    },
+    async stopOperation(listId, operationId) {
+      const op = ops.get(operationId);
+      if (!op || op.listId !== listId) return fail(404, "operation_not_found", "No such operation.");
+      const v = op.view;
+      const active = v.status === "queued" || v.status === "running";
+      if (active) {
+        v.status = "partial";
+        v.listStatus = v.admittedCount > 0 ? "partial" : "empty";
+        v.outcome = { code: "stopped_by_user", message: "This search was stopped before it reached its target. Creators already saved stay on this list." };
+        v.pollAfterSeconds = null;
+        v.completedAt = now();
+      }
+      return { operation: v, stopped: active };
     },
     async getOperation(listId, operationId) {
       const op = ops.get(operationId);
@@ -493,7 +522,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       const all = membersOf(listId);
       const rows = body.scope === "all" ? all : all.filter((m) => body.memberIds.includes(m.id));
       if (rows.length === 0) fail(409, "empty_scope", "There are no creators in this selection to export.");
-      const headers = body.format === "sheets" ? MOCK_SHEETS_HEADERS : MOCK_DEFAULT_HEADERS;
+      const headers = body.format === "master" ? MOCK_MASTER_HEADERS : body.format === "sheets" ? MOCK_SHEETS_HEADERS : MOCK_DEFAULT_HEADERS;
       const value = (m: MemberView, h: string): unknown => {
         if (h === "email") return m.email;
         if (h === "first_name") return m.displayName;

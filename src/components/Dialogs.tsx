@@ -7,6 +7,7 @@ import { count } from "../lib/format";
 import { clearKey, pendingKey, browserKeyStore } from "../lib/idempotency";
 import { findMoreDefault, isLimitError, targetProblem } from "../lib/limits";
 import { useMeta, useRefreshMeta } from "../meta";
+import { refreshListData } from "../lib/listUpdates";
 import { listHref, navigate } from "../router";
 import { LoadingStatus, Modal, Notice, Spinner, errorText, useIsMounted } from "./ui";
 
@@ -147,9 +148,46 @@ export function FindMoreDialog({ listId, listName, onClose, onStarted }: { listI
   );
 }
 
+/** Stopping keeps what the search saved and cannot be undone, so it is always asked first. */
+export function StopSearchDialog({ listId, listName, operationId, onClose }: { listId: string; listName: string; operationId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const mounted = useIsMounted();
+  const submitting = useRef(false);
+  const stop = useMutation({
+    mutationFn: () => api.stopOperation(listId, operationId),
+    onSuccess: () => {
+      refreshListData(qc, listId);
+      if (mounted.current) onClose();
+    },
+    onSettled: () => { submitting.current = false; },
+  });
+  const close = (): void => {
+    if (!stop.isPending) onClose();
+  };
+  return (
+    <Modal
+      title="Stop this search?"
+      onClose={close}
+      closeDisabled={stop.isPending}
+      footer={
+        <>
+          <button type="button" data-autofocus className="btn" disabled={stop.isPending} onClick={close}>Keep searching</button>
+          <button type="button" className="btn btn-danger" disabled={stop.isPending} onClick={() => { if (!submitting.current) { submitting.current = true; stop.mutate(); } }}>
+            {stop.isPending ? <Spinner label="Stopping the search" /> : null}Stop search
+          </button>
+        </>
+      }
+    >
+      <p>Creators already saved stay on <strong>{listName}</strong>. Anything it’s doing right now finishes first, so credits and creators may still go up slightly.</p>
+      <Notice tone="neutral">You can’t restart a stopped search. <strong>Find more</strong> carries on with the same filters and reuses results already paid for where it can. To change the filters, use <strong>New list using these criteria</strong>.</Notice>
+      {stop.isError ? <Notice tone="danger">{errorText(stop.error)}</Notice> : null}
+    </Modal>
+  );
+}
+
 export function ExportDialog({ listId, listName, total, selectedCount, onClose }: { listId: string; listName: string; total: number; selectedCount: number; onClose: () => void }) {
   const meta = useMeta();
-  const [format, setFormat] = useState<ExportFormat>("sheets");
+  const [format, setFormat] = useState<ExportFormat>("master");
   const [scope, setScope] = useState<"selected" | "all">(selectedCount > 0 ? "selected" : "all");
   const [done, setDone] = useState<{ filename: string; count: number } | null>(null);
   const run = useMutation({
@@ -174,7 +212,7 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
       setDone({ filename, count: n });
     },
   });
-  const headers = meta.data?.exportFormats[format].headers ?? [];
+  const headers = meta.data?.exportFormats[format]?.headers ?? [];
   return (
     <Modal
       title={`Export ${listName}`}
@@ -202,14 +240,16 @@ export function ExportDialog({ listId, listName, total, selectedCount, onClose }
       </fieldset>
       <fieldset className="stack" disabled={run.isPending} style={{ border: "none", padding: 0, margin: 0 }}>
         <legend className="field-label">Format</legend>
-        <label className="inline">
-          <input type="radio" name="format" checked={format === "default"} onChange={() => setFormat("default")} /> Compact — 20 columns
+        <label className="inline export-option">
+          <input type="radio" name="format" checked={format === "master"} onChange={() => setFormat("master")} />
+          <span><strong>Master list (recommended)</strong><span className="muted small">Your team’s full 104-column template.</span></span>
         </label>
-        <label className="inline">
-          <input type="radio" name="format" checked={format === "sheets"} onChange={() => setFormat("sheets")} /> Full details — 93-column Sheets template (default)
+        <label className="inline export-option">
+          <input type="radio" name="format" checked={format === "default"} onChange={() => setFormat("default")} />
+          <span><strong>Compact</strong><span className="muted small">20 columns: email, name, location and main platform numbers.</span></span>
         </label>
-        {meta.isLoading ? <LoadingStatus label="Loading export formats" /> : meta.isError ? <Notice tone="danger">Could not load export formats. <button type="button" className="link-btn" onClick={() => void meta.refetch()}>Try again</button></Notice> : <><span className="field-label small">Columns, in order ({headers.length})</span><code className="headers">{headers.join(", ")}</code></>}
-        <span className="hint muted small">Full details includes saved emails and available profile details from Find emails, including bios, profile links and follower/post counts. Unknown values stay blank. Downloading uses no extra credits.</span>
+        {meta.isLoading ? <LoadingStatus label="Loading export formats" /> : meta.isError ? <Notice tone="danger">Could not load export formats. <button type="button" className="link-btn" onClick={() => void meta.refetch()}>Try again</button></Notice> : <details className="platform-block"><summary className="field-label small">See the {headers.length} columns, in order</summary><code className="headers">{headers.map((h) => h || "(blank)").join(", ")}</code></details>}
+        <span className="hint muted small">Filled with saved emails, whatever Find emails returned, and each creator’s platform, followers and fit reason from the search. Anything we don’t hold stays blank, including outreach columns. Downloading uses no credits.</span>
       </fieldset>
       <Notice tone="neutral">
         Exporting does not change the list: all {count(total)} saved creators stay on <strong>{listName}</strong>, and a later search that excludes this list excludes all of them — not only the rows you download.

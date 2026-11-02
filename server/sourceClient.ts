@@ -24,6 +24,7 @@ export type OutcomeCode =
   | "candidate_ceiling"
   | "evaluation_ceiling"
   | "runtime_ceiling"
+  | "stopped_by_user"
   | "provider_unavailable"
   | "evaluation_unavailable"
   | "not_processed"
@@ -88,6 +89,12 @@ export interface OperationCounters {
   considered: number;
 }
 
+export interface OperationSources {
+  /** Null for a search from before this was recorded. */
+  database: { checked: number; matched: number } | null;
+  influencersClub: { calls: number; discoveryCalls: number; evidenceCalls: number; creatorsPulled: number; credits: number; creditLimit: number };
+}
+
 export interface OperationView {
   id: string;
   kind: "initial" | "find_more";
@@ -100,6 +107,7 @@ export interface OperationView {
   ownMemberCount: number;
   outcome: OperationOutcome | null;
   counters: OperationCounters;
+  sources: OperationSources;
   criteria: unknown;
   pollAfterSeconds: number | null;
   createdAt: string;
@@ -169,6 +177,7 @@ export interface ListDetail extends ListSummary {
   operations: OperationView[];
   activeOperationId: string | null;
   emailJob?: EmailJobView | null;
+  emailLookups: { calls: number; credits: number };
 }
 
 export interface MemberAccount {
@@ -256,10 +265,10 @@ export interface SourceMeta {
   workspace: string;
   maxTargetCount: number;
   platforms: SourcingPlatform[];
-  exportFormats: Record<"default" | "sheets", { headers: string[]; filled: string[] }>;
+  exportFormats: Record<ExportFormat, { headers: string[]; filled: string[] }>;
 }
 
-export type ExportFormat = "default" | "sheets";
+export type ExportFormat = "default" | "sheets" | "master";
 export type ExportRequest = { format: ExportFormat; scope: "all" } | { format: ExportFormat; scope: "selected"; memberIds: string[] };
 export interface CreatorDetailsPatch { displayName?: string | null; email?: string | null; location?: string | null; language?: string | null }
 export interface CreatorInput extends CreatorDetailsPatch { platform?: IdentityPlatform | null; handle?: string; profileUrl?: string }
@@ -415,6 +424,9 @@ export function createInternalSourcingClient(options: InternalSourcingClientOpti
       const { idempotencyKey, ...body } = p;
       return call<{ operation: OperationView; idempotentReplay: boolean }>("POST", `/lists/${id(listId)}/operations`, body, { "Idempotency-Key": idempotencyKey, ...actorHeaders(actor) });
     },
+    /** End a running search, keeping what it saved. `stopped` is false when it had already finished. */
+    stopOperation: (listId: string, operationId: string, actor?: Actor) =>
+      call<{ operation: OperationView; stopped: boolean }>("POST", `/lists/${id(listId)}/operations/${id(operationId)}/stop`, {}, actorHeaders(actor)),
     previewEmails: (listId: string, scope: EmailScope) => call<EmailPreview>("POST", `/lists/${id(listId)}/email-jobs/preview`, scope),
     startEmailJob: (listId: string, p: { memberIds: string[]; maxCredits: number; idempotencyKey: string }, actor?: Actor) => {
       const { idempotencyKey, ...body } = p;
