@@ -131,11 +131,10 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
                     <div className="creator-identity">
                       <button type="button" className="creator-name" onClick={() => setOpen(m)}>{m.displayName ?? m.handle ?? "Unnamed"}</button>
                       {m.profileUrl ? <a href={m.profileUrl} target="_blank" rel="noopener noreferrer" className="creator-profile creator-handle">@{m.handle ?? "profile"}<ExternalLink size={12} aria-hidden /><span className="sr-only">Open profile (opens in a new tab)</span></a> : <span className="cell-sub creator-handle">{m.handle ? `@${m.handle}` : "No handle provided"}</span>}
-                      {m.accounts.length > 1 ? <span className="cell-sub">+{m.accounts.length - 1} more {m.accounts.length === 2 ? "account" : "accounts"}</span> : null}
                     </div>
                   </div>
                 </td>
-                <td data-label="Platform"><span className="platform-badge">{platformLabel(m.platform)}</span></td>
+                <td data-label="Platform"><PlatformBadges member={m} /></td>
                 <td className="num" data-label="Followers">{count(m.followers)}</td>
                 <td className="num" data-label="Engagement">{percent(m.engagementPercent)}</td>
                 <td data-label="Email"><EmailCell member={m} /></td>
@@ -151,6 +150,27 @@ export function MembersTable({ listId, kind, live, emailBusy = false, onFindEmai
       {dialog?.kind === "edit" ? <CreatorDialog listId={listId} member={dialog.member} onClose={() => setDialog(null)} onSaved={message => onMessage?.(message)} /> : null}
       {dialog?.kind === "remove" ? <RemoveCreatorsDialog listId={listId} listName={listName} member={dialog.member} onClose={() => setDialog(null)} onRemoved={message => onMessage?.(message)} /> : null}
     </>
+  );
+}
+
+/** Every account on the row: the one its followers and engagement come from, then the rest as listed. */
+const accountsLeadFirst = (m: MemberView): MemberView["accounts"] => [...m.accounts].sort((a, b) => Number(b.platform === m.platform) - Number(a.platform === m.platform));
+
+function PlatformBadges({ member: m }: { member: MemberView }) {
+  if (m.accounts.length === 0) return <span className="platform-badge">{platformLabel(m.platform)}</span>;
+  return (
+    <div className="platform-badges">
+      {accountsLeadFirst(m).map((a) => {
+        const className = a.platform === m.platform ? "platform-badge lead" : "platform-badge";
+        const label = platformLabel(a.platform);
+        const detail = `@${a.handle}${a.followers !== null ? ` · ${count(a.followers)} followers` : ""}`;
+        return a.link ? (
+          <a key={`${a.platform}:${a.handle}`} className={className} href={a.link} target="_blank" rel="noopener noreferrer" title={detail} aria-label={`${label}, ${detail} (opens in a new tab)`}>{label}</a>
+        ) : (
+          <span key={`${a.platform}:${a.handle}`} className={className} title={detail}>{label}<span className="sr-only">, {detail}</span></span>
+        );
+      })}
+    </div>
   );
 }
 
@@ -190,11 +210,12 @@ function CreatorDrawer({ m, onClose, onEdit }: { m: MemberView; onClose: () => v
       </dl>
       {m.accounts.length > 1 ? (
         <section className="stack">
-          <h3>Accounts on this row</h3>
+          <h3>Accounts</h3>
           <ul>
-            {m.accounts.map((a) => (
+            {accountsLeadFirst(m).map((a) => (
               <li key={`${a.platform}:${a.handle}`}>
-                {platformLabel(a.platform)} @{a.handle}
+                {platformLabel(a.platform)}{" "}
+                {a.link ? <a href={a.link} target="_blank" rel="noopener noreferrer" className="creator-profile">@{a.handle}<ExternalLink size={12} aria-hidden /><span className="sr-only">(opens in a new tab)</span></a> : `@${a.handle}`}
                 {a.followers !== null ? ` · ${count(a.followers)} followers` : ""}
               </li>
             ))}

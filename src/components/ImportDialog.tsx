@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { FileText, FileUp } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type { IdentityPlatform, ImportMapping, ImportReport, ImportRowStatus } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
 import { count } from "../lib/format";
@@ -152,6 +152,8 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
     submitting.current = true;
     commit.mutate();
   };
+  // The columns that identify creators in this file, when it names them per platform as the template does.
+  const platformColumns = mapping?.perNetwork ? report?.networkColumns ?? [] : [];
   const problems = preview.error instanceof ApiError ? ((preview.error.details["problems"] as Array<{ field: string; message: string }> | undefined) ?? []) : [];
   const mappingField = (f: (typeof MAPPED)[number]) => mapping ? (
     <div className="field" key={f.key}>
@@ -186,15 +188,15 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
       <ProgressSteps steps={["Choose file", "Map columns", "Review rows"]} current={!csv ? 0 : !previewMatchesMapping ? 1 : 2} />
       <div className="import-format-guide">
         <div>
-          <strong>Prepare your creator file</strong>
-          <p className="muted small">Use a header row and one creator per row. The simplest format is <code>platform,handle</code>. Names and emails can be included, but cannot identify a creator on their own.</p>
+          <strong>Use the standard creator template</strong>
+          <p className="muted small">One creator per row. For each platform they’re on, fill in that platform’s username or link column. Everything else is optional, and a name or email alone can’t identify a creator.</p>
         </div>
-        <code className="import-example">platform,handle,name<br />instagram,janedoe,Jane Doe</code>
+        <code className="import-example">email,first_name,…,instagram_username,…,tiktok_username,…<br />jane@example.com,Jane,…,janedoe,…,janedoe,…</code>
         <div className="actions">
           <a className="btn btn-sm" href="/creator-list-template.csv" download="creator-list-template.csv">Download CSV template</a>
           <details className="import-alternatives">
-            <summary>Other accepted identities</summary>
-            <p className="muted small">A profile URL, Influencers Club provider ID, existing Pluvus creator ID from this workspace, or Sheets per-platform columns can also identify a creator. You can map your file’s columns after choosing it. For bare handles, set one platform for the whole file.</p>
+            <summary>Using a different file?</summary>
+            <p className="muted small">A file with platform and handle columns, a profile URL, an Influencers Club provider ID or an existing Pluvus creator ID also works. You can map its columns after choosing it. For bare handles, set one platform for the whole file.</p>
           </details>
         </div>
       </div>
@@ -230,9 +232,37 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
       {csv && mapping ? (
         <section className="section">
           <div className="section-head">
-            <h3>Map identity columns</h3>
+            <h3>{platformColumns.length > 0 ? "Identity columns" : "Map identity columns"}</h3>
             <span className="muted small">{fileName}</span>
           </div>
+          {platformColumns.length > 0 ? (
+            <>
+              <Notice tone={report?.standardTemplate ? "success" : "info"} title={report?.standardTemplate ? "Standard creator template recognized" : "Platform columns found"}>
+                Identity columns are mapped for you. Each row’s accounts are read from these columns.
+              </Notice>
+              <div className="table-wrap card identity-columns">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Platform</th>
+                      <th>Username column</th>
+                      <th>Profile link column</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {platformColumns.map((c) => (
+                      <tr key={c.platform}>
+                        <td>{PLATFORMS.find(([value]) => value === c.platform)?.[1] ?? c.platform}</td>
+                        <td>{c.username ? <code>{c.username}</code> : <span className="muted">Not in file</span>}</td>
+                        <td>{c.link ? <code>{c.link}</code> : <span className="muted">Not in file</span>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : null}
+          <MappingFields collapsed={platformColumns.length > 0}>
           <p className="muted small">A creator is identified by platform + handle or profile URL, or a stable ID. Names and emails never identify a creator; the same handle on two platforms is two creators.</p>
           <div className="import-mapping-grid">
             {MAPPED.filter((f) => f.identity).map(mappingField)}
@@ -259,6 +289,7 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
               {MAPPED.filter((f) => !f.identity).map(mappingField)}
             </div>
           </details>
+          </MappingFields>
           {problems.map((p) => (
             <span className="error" key={p.field}>
               {p.message}
@@ -337,6 +368,17 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
       {commit.isError ? <Notice tone="danger">{errorText(commit.error)}</Notice> : null}
       {commit.isPending ? <Notice tone="info">Importing this list. It will open when it is ready.</Notice> : null}
     </Modal>
+  );
+}
+
+/** The manual mapping: in plain view for a file that needs it, tucked away when the columns already mapped themselves. */
+function MappingFields({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
+  if (!collapsed) return <>{children}</>;
+  return (
+    <details className="platform-block">
+      <summary className="field-label">Change the mapping</summary>
+      {children}
+    </details>
   );
 }
 

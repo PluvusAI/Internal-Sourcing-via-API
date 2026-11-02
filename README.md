@@ -34,14 +34,15 @@ moved here with its history. The backend side of PLU-505 is on that repository's
   archive or restore moves the list to the other view. Any list without an active search or email
   job can be deleted directly after confirmation; creator records, search history and existing
   exclusion references are retained.
-- **Import list** — choose CSV → name → map identity columns (platform, handle, profile URL, provider
-  ID, Pluvus creator ID; or the Sheets per-platform columns) → preview valid / duplicate / invalid /
+- **Import list** — choose CSV → name → review the identity columns → preview valid / duplicate / invalid /
   ambiguous rows → acknowledge a partial import → open the saved list. Nothing is saved before Import.
-  The dialog includes a downloadable [CSV template](public/creator-list-template.csv). Its header row
-  names the common columns; add one creator per row. The simplest usable row has `platform` and
-  `handle` (for example, `instagram,janedoe`). A profile URL, provider ID, creator ID, or recognised
-  per-platform columns can also identify a creator. Names and emails alone cannot. The backend
-  suggests mappings from other header names, previews every row, and enforces the import rules.
+  The dialog offers the [standard creator template](public/creator-list-template.csv), the same 104 columns
+  as the master list export. A file with those columns maps itself: each platform's username and link
+  columns identify the creator, a row keeps every account it names, the table shows one badge per
+  platform with the largest audience first, and Find emails tries the accounts in turn (at most 0.2
+  credits per creator). Any other file can still map a platform and handle, profile URL, provider
+  ID or creator ID by hand. Names and emails alone cannot identify a creator. The backend suggests
+  mappings from other header names, previews every row, and enforces the import rules.
 - **New sourcing list** — three steps (Criteria → Exclusions → Review & search), with direct step
   navigation and Back/Forward/reload support. Criteria are grouped by platform, content and fit,
   location and language, and optional brand context. Suggested fields have icons and explicit markers;

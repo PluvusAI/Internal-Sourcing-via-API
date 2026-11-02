@@ -6,12 +6,14 @@
  */
 
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { after, test } from "node:test";
 import { createApp } from "./app.js";
 import type { Verify } from "./auth.js";
 import { loadConfig, type AppConfig } from "./config.js";
+import { MOCK_MASTER_HEADERS } from "./mockHeaders.js";
 import { createMockSource } from "./mockSource.js";
 import { createInternalSourcingClient } from "./sourceClient.js";
 
@@ -454,4 +456,29 @@ test("sample lists can be deleted directly after creation, import or completed s
   for (let i = 0; i < 5; i++) { const list = await source.getList(sourced.id); if (!["queued", "sourcing"].includes(list.status)) break; }
   await source.removeList(sourced.id);
   assert.equal((await source.searchLists({ archivedOnly: true })).lists.some(l => l.id === sourced.id), false);
+});
+
+test("the template offered for download is the standard creator template, and it maps itself", async () => {
+  const file = readFileSync(new URL("../public/creator-list-template.csv", import.meta.url), "utf8").trim();
+  assert.equal(file, MOCK_MASTER_HEADERS.join(","));
+  assert.equal(file.split(",").length, 104);
+  const mock = createMockSource();
+  const report = await mock.previewImport(`${file}\n${MOCK_MASTER_HEADERS.map((h) => (h === "email" ? "a@example.com" : h === "instagram_username" ? "ada" : "")).join(",")}`, null);
+  assert.equal(report.standardTemplate, true);
+  assert.equal(report.mapping.perNetwork, true);
+  assert.equal(report.counts.valid, 1);
+  assert.deepEqual(report.networkColumns[0], { platform: "instagram", username: "instagram_username", link: "instagram_link" });
+
+  const several: Record<string, string> = { email: "b@example.com", instagram_username: "ada_ig", instagram_follower_count: "900", tiktok_username: "ada_tt", youtube_custom_url: "@Ada_Channel", youtube_subscriber_count: "114000" };
+  const csv = `${file}\n${MOCK_MASTER_HEADERS.map((h) => several[h] ?? "").join(",")}`;
+  const { list } = await mock.commitImport({ csv, name: "Several platforms", mapping: (await mock.previewImport(csv, null)).mapping, acknowledgePartial: false });
+  const [member] = (await mock.members(list.id)).members;
+  assert.equal(member!.platform, "youtube", "a creator leads with the largest audience");
+  assert.equal(member!.followers, 114000);
+  assert.deepEqual(member!.accounts.map((a) => `${a.platform}:${a.handle}`), ["instagram:ada_ig", "tiktok:ada_tt", "youtube:ada_channel"], "each platform keeps its own handle");
+
+  const line = (cells: Record<string, string>): string => MOCK_MASTER_HEADERS.map((h) => cells[h] ?? "").join(",");
+  const mixed = await mock.previewImport([file, line({ twitch_username: "ada_live", twitch_total_followers: "9000", twitter_link: "https://x.com/ada_x" }), line({ instagram_username: "other_ig", twitter_username: "ada_x" })].join("\n"), null);
+  assert.equal(mixed.counts.valid, 1, "a Twitch lead and an account named only by its link both count");
+  assert.equal(mixed.counts.duplicate, 1, "and a row sharing any account with an earlier row is the same creator");
 });

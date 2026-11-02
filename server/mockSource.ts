@@ -27,7 +27,11 @@ import {
 // the real behaviour lives in the sourcing backend and is tested there.
 
 const PLATFORMS = ["instagram", "tiktok", "youtube", "twitter"] as const;
+const PROFILE_ADDRESS: Record<string, string> = { instagram: "https://www.instagram.com/", tiktok: "https://www.tiktok.com/@", youtube: "https://www.youtube.com/@", twitter: "https://x.com/", twitch: "https://www.twitch.tv/" };
+const handleInLink = (address: string): string => { try { return new URL(address).pathname.split("/").filter(Boolean).pop()?.replace(/^@/, "") ?? ""; } catch { return ""; } };
+const AUDIENCE_COLUMN: Record<string, string> = { instagram: "instagram_follower_count", tiktok: "tiktok_follower_count", youtube: "youtube_subscriber_count", twitch: "twitch_total_followers" };
 type Platform = (typeof PLATFORMS)[number];
+interface ValidRow { row: number; platform: string; handle: string; link: string | null; followers: number | null; accounts: MemberView["accounts"]; name: string | null; email: string | null }
 
 interface MockList {
   id: string;
@@ -207,47 +211,65 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     return { headers, rows: lines.slice(1).map((l) => Object.fromEntries(split(l).map((c, i) => [headers[i] ?? `col${i}`, c]))) };
   }
 
-  function report(csv: string, mapping: ImportMapping | null): { report: ImportReport; valid: Array<{ row: number; platform: string; handle: string; name: string | null; email: string | null }> } {
+  function report(csv: string, mapping: ImportMapping | null): { report: ImportReport; valid: ValidRow[] } {
     const { headers, rows } = parseCsv(csv);
     if (headers.length === 0 || rows.length === 0) fail(400, "invalid_import", "The file has no creators.", { reason: "empty_file" });
     const find = (names: string[]): string | null => headers.find((h) => names.includes(h.toLowerCase().replace(/[\s_-]/g, ""))) ?? null;
+    const networkColumns: ImportReport["networkColumns"] = (["instagram", "tiktok", "youtube", "twitter", "twitch"] as const).flatMap((platform) => {
+      const username = platform === "youtube" ? "youtube_custom_url" : `${platform}_username`;
+      const link = `${platform}_link`;
+      return headers.includes(username) || headers.includes(link) ? [{ platform, username: headers.includes(username) ? username : null, link: headers.includes(link) ? link : null }] : [];
+    });
     const m: ImportMapping = mapping ?? {
       platform: find(["platform", "network"]),
       handle: find(["handle", "username"]),
       profileUrl: find(["profileurl", "url", "link"]),
       providerUserId: null,
       creatorId: null,
-      displayName: find(["name", "fullname", "displayname"]),
+      displayName: find(["name", "fullname", "displayname", "firstname"]),
       email: find(["email"]),
       followers: null,
       engagement: null,
       location: null,
       language: null,
-      perNetwork: false,
+      perNetwork: networkColumns.length > 0,
       defaultPlatform: null,
     };
-    if (!m.handle && !m.profileUrl) fail(422, "invalid_mapping", "Map a handle or profile URL column.", { headers, suggestedMapping: m });
+    if (!m.handle && !m.profileUrl && !m.perNetwork) fail(422, "invalid_mapping", "Map a handle or profile URL column.", { headers, suggestedMapping: m });
     const seen = new Map<string, number>();
     const out: ImportReport["rows"] = [];
-    const valid: Array<{ row: number; platform: string; handle: string; name: string | null; email: string | null }> = [];
+    const valid: ValidRow[] = [];
     const counts = { totalRows: rows.length, valid: 0, duplicate: 0, invalid: 0, ambiguous: 0, withWarnings: 0 };
     rows.forEach((r, i) => {
       const row = i + 2;
-      const platform = (m.platform ? r[m.platform] : m.defaultPlatform)?.toLowerCase() ?? "";
-      const handle = (m.handle ? r[m.handle] : "")?.replace(/^@/, "").toLowerCase() ?? "";
+      // The template names accounts per platform: a row keeps them all and leads with its largest audience.
+      const named: MemberView["accounts"] = !m.perNetwork ? [] : networkColumns.flatMap((c) => {
+        const address = c.link ? r[c.link]?.trim() ?? "" : "";
+        const cell = c.username ? r[c.username]?.trim() ?? "" : "";
+        const username = (/^https?:/i.test(cell) ? handleInLink(cell) : cell.replace(/^@/, "") || handleInLink(address)).toLowerCase();
+        if (!username) return [];
+        const audience = Number(r[AUDIENCE_COLUMN[c.platform] ?? ""]?.replace(/,/g, "") || NaN);
+        return [{ platform: c.platform, handle: username, link: address || `${PROFILE_ADDRESS[c.platform]}${username}`, followers: Number.isFinite(audience) ? audience : null, engagementPercent: null }];
+      });
+      const lead = named.reduce<MemberView["accounts"][number] | null>((best, a) => (best === null || (a.followers ?? -1) > (best.followers ?? -1) ? a : best), null);
+      const platform = (lead ? lead.platform : m.platform ? r[m.platform] : m.defaultPlatform)?.toLowerCase() ?? "";
+      const handle = (lead ? lead.handle : m.handle ? r[m.handle] : "")?.replace(/^@/, "").toLowerCase() ?? "";
+      const accounts = lead ? named : [{ platform, handle, link: PROFILE_ADDRESS[platform] ? `${PROFILE_ADDRESS[platform]}${handle}` : null, followers: null, engagementPercent: null }];
+      const repeat = accounts.find((a) => seen.has(`${a.platform}:${a.handle}`));
       if (!handle) {
         counts.invalid++;
         out.push({ row, status: "invalid", reason: "No handle.", warnings: [], identity: "(empty)" });
-      } else if (!(PLATFORMS as readonly string[]).includes(platform)) {
+      } else if (!(PLATFORMS as readonly string[]).includes(platform) && platform !== "twitch") {
         counts.ambiguous++;
         out.push({ row, status: "ambiguous", reason: "A handle without a supported platform.", warnings: [], identity: handle });
-      } else if (seen.has(`${platform}:${handle}`)) {
+      } else if (repeat) {
         counts.duplicate++;
-        out.push({ row, status: "duplicate", reason: `Same creator as row ${seen.get(`${platform}:${handle}`)}.`, warnings: [], identity: `${platform} @${handle}` });
+        out.push({ row, status: "duplicate", reason: `Same creator as row ${seen.get(`${repeat.platform}:${repeat.handle}`)}.`, warnings: [], identity: `${repeat.platform} @${repeat.handle}` });
       } else {
-        seen.set(`${platform}:${handle}`, row);
         counts.valid++;
-        valid.push({ row, platform, handle, name: m.displayName ? r[m.displayName] ?? null : null, email: m.email ? r[m.email] ?? null : null });
+        for (const a of accounts) seen.set(`${a.platform}:${a.handle}`, row);
+        const shown = accounts.find((a) => a.platform === platform);
+        valid.push({ row, platform, handle, link: shown?.link ?? null, followers: shown?.followers ?? null, accounts, name: m.displayName ? r[m.displayName] ?? null : null, email: m.email ? r[m.email] ?? null : null });
       }
     });
     return {
@@ -259,6 +281,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         rows: out,
         needsAcknowledgement: counts.invalid + counts.ambiguous > 0,
         sample: valid.slice(0, 20).map((v) => ({ row: v.row, identity: `${v.platform} @${v.handle}`, displayName: v.name, email: v.email })),
+        networkColumns,
+        standardTemplate: headers.filter(Boolean).join(",") === MOCK_MASTER_HEADERS.filter(Boolean).join(","),
       },
       valid,
     };
@@ -577,16 +601,16 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
           operationId: null,
           platform: v.platform,
           handle: v.handle,
-          profileUrl: null,
+          profileUrl: v.link,
           displayName: v.name,
-          followers: null,
+          followers: v.followers,
           engagementPercent: null,
           pictureUrl: null, pictureStored: false,
           reason: null,
           email: v.email,
           location: null,
           language: null,
-          accounts: [{ platform: v.platform, handle: v.handle, link: null, followers: null, engagementPercent: null }],
+          accounts: v.accounts,
           selected: false,
           importRow: v.row,
           createdAt: now(),
