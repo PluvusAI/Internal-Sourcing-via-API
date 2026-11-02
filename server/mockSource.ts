@@ -83,6 +83,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
   let sampleSeq = 0;
 
   const membersOf = (listId: string): MemberView[] => members.get(listId) ?? [];
+  /** Creators without an email go last, as the real list and export do. */
+  const emailFirst = (rows: MemberView[]): MemberView[] => [...rows.filter((m) => m.email?.trim()), ...rows.filter((m) => !m.email?.trim())];
   const latestOp = (listId: string): MockOp | null => [...ops.values()].filter((o) => o.listId === listId).at(-1) ?? null;
   const statusOf = (l: MockList): ListStatus => (l.kind === "imported" ? "imported" : latestOp(l.id)?.view.listStatus ?? "draft");
   const summary = (l: MockList): ListSummary => {
@@ -468,7 +470,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       get(listId);
       const page = p.page ?? 1;
       const pageSize = p.pageSize ?? 50;
-      const all = membersOf(listId);
+      const all = emailFirst(membersOf(listId));
       return { members: all.slice((page - 1) * pageSize, page * pageSize), total: all.length, selectedCount: all.filter((m) => m.selected).length, page, pageSize };
     },
     async selection(listId) {
@@ -545,7 +547,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     async exportList(listId, body) {
       const l = get(listId);
       const all = membersOf(listId);
-      const rows = body.scope === "all" ? all : all.filter((m) => body.memberIds.includes(m.id));
+      const rows = emailFirst(body.scope === "all" ? all : all.filter((m) => body.memberIds.includes(m.id)));
       if (rows.length === 0) fail(409, "empty_scope", "There are no creators in this selection to export.");
       const headers = body.format === "master" ? MOCK_MASTER_HEADERS : body.format === "sheets" ? MOCK_SHEETS_HEADERS : MOCK_DEFAULT_HEADERS;
       const value = (m: MemberView, h: string): unknown => {
