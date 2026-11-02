@@ -31,10 +31,8 @@ export interface SourceTotals {
 }
 
 export function sourceTotals(list: Pick<ListDetail, "operations" | "emailLookups">): SourceTotals {
-  const totals: SourceTotals = { searchCalls: 0, searchCredits: 0, creatorsPulled: 0, databaseChecked: 0, unrecordedSearches: 0, emailCalls: list.emailLookups?.calls ?? 0, emailCredits: list.emailLookups?.credits ?? 0 };
+  const totals: SourceTotals = { searchCalls: 0, searchCredits: 0, creatorsPulled: 0, databaseChecked: 0, unrecordedSearches: 0, emailCalls: list.emailLookups.calls, emailCredits: list.emailLookups.credits };
   for (const { sources } of list.operations) {
-    // Absent only while an older sourcing backend is still live.
-    if (!sources) continue;
     totals.searchCalls += sources.influencersClub.calls;
     totals.searchCredits += sources.influencersClub.credits;
     totals.creatorsPulled += sources.influencersClub.creatorsPulled;

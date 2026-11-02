@@ -105,8 +105,9 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     return { id: l.id, name: l.name, kind: l.kind, status: statusOf(l), memberCount: membersOf(l.id).length, archived: l.archivedAt !== null, missing: false };
   };
   const emailLookupsOf = (listId: string): ListDetail["emailLookups"] => {
-    const spent = [...emailHistory.values()].filter((h) => h.listId === listId).reduce((n, h) => n + h.job.creditsSpent, 0);
-    return { calls: Math.round(spent / 0.2), credits: +spent.toFixed(4) };
+    const jobs = [...emailHistory.values()].filter((h) => h.listId === listId).map((h) => h.job);
+    // A lookup that finds nothing is free, but it is still a call.
+    return { calls: jobs.reduce((n, j) => n + (j.counts.found ?? 0) + (j.counts.not_found ?? 0), 0), credits: +jobs.reduce((n, j) => n + j.creditsSpent, 0).toFixed(4) };
   };
   const detail = (l: MockList): ListDetail => {
     const operations = [...ops.values()].filter((o) => o.listId === l.id).map((o) => o.view);
@@ -526,6 +527,9 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
       const value = (m: MemberView, h: string): unknown => {
         if (h === "email") return m.email;
         if (h === "first_name") return m.displayName;
+        if (h === "pluvus_qualifying_platform") return m.source === "sourced" ? m.platform : null;
+        if (h === "pluvus_qualifying_followers") return m.source === "sourced" ? m.followers : null;
+        if (h === "pluvus_note") return m.source === "sourced" ? m.reason : null;
         const [platform, ...rest] = h.split("_");
         const field = rest.join("_");
         if (platform !== m.platform) return null;

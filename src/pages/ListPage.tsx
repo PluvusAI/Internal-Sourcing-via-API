@@ -567,7 +567,8 @@ function RenameTitle({ list }: { list: ListDetail }) {
 
 function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationView | null }) {
   const consideredTotal = list.operations.reduce((total, operation) => total + operation.counters.considered, 0);
-  const totals = sourceTotals(list);
+  // An older sourcing backend sends none of this: show nothing rather than zeros that look real.
+  const totals = list.operations.every((operation) => operation.sources) ? sourceTotals(list) : null;
   return (
     <div className="search-summary">
       {latest ? <section className="card search-overview" aria-label="Search progress">
@@ -619,10 +620,12 @@ function SourcedSummary({ list, latest }: { list: ListDetail; latest: OperationV
           <dt>Excluded at start</dt><dd>{count(latest.excludedCreatorCount)} unique creators from {latest.excludedLists.length} {latest.excludedLists.length === 1 ? "list" : "lists"}</dd>
           <dt>Already saved at start</dt><dd>{count(latest.ownMemberCount)} creators</dd>
           <dt>Total considered</dt><dd>{count(consideredTotal)} across {list.operations.length} {list.operations.length === 1 ? "search" : "searches"}</dd>
+          {totals ? <>
           <dt>Credits used</dt><dd>{credits(totals.searchCredits + totals.emailCredits)} total · {credits(totals.searchCredits)} on searches · {credits(totals.emailCredits)} on Find emails</dd>
           <dt>Influencers Club API calls</dt><dd>{count(totals.searchCalls + totals.emailCalls)} total · {count(totals.searchCalls)} for searches · {count(totals.emailCalls)} for Find emails</dd>
           <dt>Pulled from Influencers Club</dt><dd>{count(totals.creatorsPulled)} creators</dd>
           <dt>Checked in our database</dt><dd>{count(totals.databaseChecked)} creators{totals.unrecordedSearches > 0 ? ` (${totals.unrecordedSearches === 1 ? "1 older search" : `${totals.unrecordedSearches} older searches`} not recorded)` : ""}</dd>
+          </> : null}
         </dl> : <span className="muted">No search yet.</span>}
         {list.operations.length > 1 ? (
           <details>
