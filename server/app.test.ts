@@ -476,4 +476,9 @@ test("the template offered for download is the standard creator template, and it
   assert.equal(member!.platform, "youtube", "a creator leads with the largest audience");
   assert.equal(member!.followers, 114000);
   assert.deepEqual(member!.accounts.map((a) => `${a.platform}:${a.handle}`), ["instagram:ada_ig", "tiktok:ada_tt", "youtube:ada_channel"], "each platform keeps its own handle");
+
+  const line = (cells: Record<string, string>): string => MOCK_MASTER_HEADERS.map((h) => cells[h] ?? "").join(",");
+  const mixed = await mock.previewImport([file, line({ twitch_username: "ada_live", twitch_total_followers: "9000", twitter_link: "https://x.com/ada_x" }), line({ instagram_username: "other_ig", twitter_username: "ada_x" })].join("\n"), null);
+  assert.equal(mixed.counts.valid, 1, "a Twitch lead and an account named only by its link both count");
+  assert.equal(mixed.counts.duplicate, 1, "and a row sharing any account with an earlier row is the same creator");
 });
