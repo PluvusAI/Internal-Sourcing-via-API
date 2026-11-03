@@ -2,7 +2,7 @@ import { emailJobActive } from "../components/EmailLookup";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, Check, CheckCircle2, Copy, Download, ListFilter, Pencil, Search, ShieldBan, Sparkles, Users } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import type { ListDetail, OperationView, SourceMeta } from "../../server/sourceClient";
+import type { ListDetail, OperationView, SourceMeta, StoredRead } from "../../server/sourceClient";
 import { api, ApiError } from "../api";
 import { CRITERIA_ICONS, CriteriaFormFields, PLATFORM_ICONS } from "../components/CriteriaForm";
 import { ExportDialog, FindMoreDialog, NewListDialog, StopSearchDialog } from "../components/Dialogs";
@@ -16,7 +16,7 @@ import { count, isActive, pollMs, progressText, when } from "../lib/format";
 import { browserKeyStore, clearKey, pendingKey } from "../lib/idempotency";
 import { fromIds, selectedIds, type Selection } from "../lib/selection";
 import { isLimitError } from "../lib/limits";
-import { credits, creditsPerSaved, sourceTotals, spendingAhead } from "../lib/searchSpend";
+import { credits, creditsPerSaved, sourceTotals, spendingAhead, storedReadReasons } from "../lib/searchSpend";
 import { useMeta, useRefreshMeta } from "../meta";
 import { libraryHref, listReturnHref, linkHandler, navigate, parseRoute, registerNavigationBlocker, setParams, useLocation, type NavigationAttempt } from "../router";
 
@@ -670,11 +670,29 @@ function SourceFacts({ op, running, onStop }: { op: OperationView; running: bool
       ) : null}
       <p className="muted small">Each search checks our database first, which uses no credits, then pays Influencers Club only for what’s still missing.</p>
       <dl className="metric-grid">
-        <div className="search-metric"><dt>Checked in our database</dt><dd><strong>{database ? count(database.checked) : "—"}</strong><span>{database ? `${count(database.matched)} matched this search` : "Not recorded for this older search"}</span></dd></div>
+        <div className="search-metric"><dt>Checked in our database</dt><dd><strong>{database ? count(database.checked) : "—"}</strong><span>{database ? `${count(database.matched)} used by this search` : "Not recorded for this older search"}</span></dd></div>
         <div className="search-metric"><dt>Pulled from Influencers Club</dt><dd><strong>{count(ic.creatorsPulled)}</strong><span>Creators in the results we paid for</span></dd></div>
         <div className="search-metric"><dt>Influencers Club API calls</dt><dd><strong>{count(ic.calls)}</strong><span>{count(ic.discoveryCalls)} {ic.discoveryCalls === 1 ? "page" : "pages"} of results · {count(ic.evidenceCalls)} profile {ic.evidenceCalls === 1 ? "check" : "checks"}</span></dd></div>
       </dl>
+      {database?.storedRead ? <StoredReadFacts read={database.storedRead} /> : null}
     </section>
+  );
+}
+
+/** Why the creators this search read from our database weren't taken from it for free. */
+function StoredReadFacts({ read }: { read: StoredRead }) {
+  const reasons = storedReadReasons(read);
+  if (reasons.length === 0) return null;
+  return (
+    <details className="platform-block stored-read">
+      <summary className="field-label">Why {read.picked > 0 ? "the rest of " : ""}our database wasn’t used for free</summary>
+      <ul>
+        {reasons.map((r) => (
+          <li key={r.key}><span>{r.label}</span><strong>{count(r.count)}</strong></li>
+        ))}
+      </ul>
+      {read.unproven > 0 ? <p className="muted small">Influencers Club only confirms location and language through a search with those filters. If a creator comes back in the results, it costs 0.01 credits and their saved details are reused, so they’re counted as used above.</p> : null}
+    </details>
   );
 }
 

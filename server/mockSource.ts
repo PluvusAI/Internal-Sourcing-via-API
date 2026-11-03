@@ -158,7 +158,8 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
     paid.calls = paid.discoveryCalls + paid.evidenceCalls;
     paid.creatorsPulled += 25;
     paid.credits = +(paid.credits + 0.37).toFixed(2);
-    v.sources.database = { checked: (v.sources.database?.checked ?? 0) + 40, matched: (v.sources.database?.matched ?? 0) + 6 };
+    const checked = (v.sources.database?.checked ?? 0) + 40;
+    v.sources.database = { checked, matched: (v.sources.database?.matched ?? 0) + 6, storedRead: { unusable: 0, rejected: checked / 10, unproven: checked / 2, excluded: checked / 20, notAFit: checked / 40, noDetails: checked / 20, noWordMatch: checked / 10, overLimit: 0, picked: (checked * 7) / 40 } };
     for (let i = 0; i < 2 && v.admittedCount < v.targetCount && sampleSeq < 60; i++) {
       const n = sampleSeq++;
       const platform: Platform = PLATFORMS[n % PLATFORMS.length]!;
@@ -511,7 +512,7 @@ export function createMockSource(opts: { maxTargetCount?: number } = {}): Intern
         ownMemberCount: membersOf(l.id).length,
         outcome: null,
         counters: { excluded: 0, duplicates: 0, considered: 0 },
-        sources: { database: { checked: 0, matched: 0 }, influencersClub: { calls: 0, discoveryCalls: 0, evidenceCalls: 0, creatorsPulled: 0, credits: 0, creditLimit: 20 } },
+        sources: { database: { checked: 0, matched: 0 }, influencersClub: { calls: 0, discoveryCalls: 0, evidenceCalls: 0, creatorsPulled: 0, credits: 0, creditLimit: 50 } },
         criteria: l.criteria,
         pollAfterSeconds: 10,
         createdAt: now(),

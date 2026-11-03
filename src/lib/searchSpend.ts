@@ -1,4 +1,4 @@
-import type { ListDetail, OperationView } from "../../server/sourceClient";
+import type { ListDetail, OperationView, StoredRead } from "../../server/sourceClient";
 
 export const credits = (n: number): string => n.toFixed(2);
 
@@ -17,6 +17,24 @@ export function spendingAhead(op: OperationView): boolean {
   if (creditLimit <= 0 || op.targetCount <= 0) return false;
   const spent = used / creditLimit;
   return spent >= 0.25 && spent > op.admittedCount / op.targetCount;
+}
+
+/** Why a search's free read of our database left creators, in plain words, biggest first. */
+const STORED_READ_REASONS: Array<[keyof StoredRead, string]> = [
+  ["unproven", "Required filter not proven, usually location or language"],
+  ["rejected", "Outside this search’s filters"],
+  ["excluded", "On a list you excluded"],
+  ["notAFit", "Already judged not a fit for this search"],
+  ["noDetails", "No saved details to judge"],
+  ["noWordMatch", "Profile doesn’t mention this search’s words"],
+  ["overLimit", "Over this search’s limit"],
+  ["unusable", "No Influencers Club ID"],
+];
+
+export function storedReadReasons(read: StoredRead): Array<{ key: keyof StoredRead; label: string; count: number }> {
+  return STORED_READ_REASONS.filter(([key]) => read[key] > 0)
+    .map(([key, label]) => ({ key, label, count: read[key] }))
+    .sort((a, b) => b.count - a.count);
 }
 
 export interface SourceTotals {
