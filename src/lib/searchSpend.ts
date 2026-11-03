@@ -28,7 +28,8 @@ const STORED_READ_REASONS: Array<[keyof StoredRead, string]> = [
   ["noDetails", "No saved details to judge"],
   ["noWordMatch", "Profile doesn’t mention this search’s words"],
   ["overLimit", "Over this search’s limit"],
-  ["unusable", "No Influencers Club ID"],
+  // Only searches from before imported creators could be used count these.
+  ["unusable", "Imported creators this older search couldn’t use"],
 ];
 
 export function storedReadReasons(read: StoredRead): Array<{ key: keyof StoredRead; label: string; count: number }> {
