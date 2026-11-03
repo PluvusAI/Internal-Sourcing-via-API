@@ -30,3 +30,9 @@ test("why our database wasn't used: only the reasons that apply, biggest first, 
   assert.deepEqual(storedReadReasons(read).map((r) => [r.key, r.count]), [["unproven", 40], ["noWordMatch", 9], ["excluded", 7], ["rejected", 3], ["noDetails", 2]]);
   assert.deepEqual(storedReadReasons({ unusable: 0, rejected: 0, unproven: 0, excluded: 0, notAFit: 0, noDetails: 0, noWordMatch: 0, overLimit: 0, picked: 6 }), []);
 });
+
+test("an older search that couldn't use imported creators says so, rather than blaming a missing ID", () => {
+  const [reason] = storedReadReasons({ unusable: 7414, rejected: 0, unproven: 552, excluded: 0, notAFit: 0, noDetails: 0, noWordMatch: 0, overLimit: 0, picked: 0 });
+  assert.equal(reason!.key, "unusable");
+  assert.match(reason!.label, /^Imported creators this older search couldn’t use$/);
+});
