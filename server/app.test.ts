@@ -482,3 +482,14 @@ test("the template offered for download is the standard creator template, and it
   assert.equal(mixed.counts.valid, 1, "a Twitch lead and an account named only by its link both count");
   assert.equal(mixed.counts.duplicate, 1, "and a row sharing any account with an earlier row is the same creator");
 });
+
+test("sample mode lists and exports creators without an email last, as the real list does", async () => {
+  const mock = createMockSource();
+  const csv = "platform,handle,email\ninstagram,no_email_a,\ninstagram,has_email_b,b@example.com\ntiktok,no_email_c,\ntiktok,has_email_d,d@example.com\n";
+  const { list } = await mock.commitImport({ csv, name: "Sorted", mapping: (await mock.previewImport(csv, null)).mapping, acknowledgePartial: true });
+  assert.deepEqual((await mock.members(list.id)).members.map((m) => m.handle), ["has_email_b", "has_email_d", "no_email_a", "no_email_c"]);
+  const exported = await mock.exportList(list.id, { format: "default", scope: "all" });
+  const lines = exported.csv.replace(/^\uFEFF/, "").trim().split(/\r?\n/);
+  const at = lines[0]!.split(",").indexOf("email");
+  assert.deepEqual(lines.slice(1).map((l) => l.split(",")[at]), ["b@example.com", "d@example.com", "", ""]);
+});
